@@ -30,7 +30,7 @@ void * the_thread(void* path){
 
 	// 	ioctl(fd,1,2); //low priority  -  blocking operations with timeout
 
-	for(i=0;i<1000;i++) write(fd,DATA,SIZE);
+	for(i=0;i<10;i++) write(fd,DATA,SIZE);
 	return NULL;
 
 }

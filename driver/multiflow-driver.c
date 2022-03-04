@@ -188,17 +188,16 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
     the_object->op=1; //blocking
     the_object->TIMEOUT=(int32_t*)param;
   }
-  printk("%s: somebody called an ioctl on dev with [major,minor] number [%d,%d] and command %u \n",MODNAME,get_major(filp),get_minor(filp),command);
   switch (command) {
 
 		case hi_ioctl:
+      printk("%s: somebody called an hi-ioctl on dev with [major,minor] number [%d,%d] and command %u \n",MODNAME,get_major(filp),get_minor(filp),command);
       the_object->prio=0;
-      printk(KERN_INFO "New request to high priority stream");
 			break;
 
 		case low_ioctl:
+      printk("%s: somebody called an low-ioctl on dev with [major,minor] number [%d,%d] and command %u \n",MODNAME,get_major(filp),get_minor(filp),command);
       the_object->prio=1;
-      printk(KERN_INFO "New request to low priority stream");
 			break;
 
 		default:
