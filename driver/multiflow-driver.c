@@ -224,13 +224,6 @@ static struct file_operations fops = {
 int init_module(void) {
 
 int i;
-revert_allocation:
-	for(;i>=0;i--){
-		free_page((unsigned long)objects[i].hi_prio_stream);
-		free_page((unsigned long)objects[i].low_prio_stream);
-	}
-	return -ENOMEM;
-
 
 	//initialize the drive internal state
 	for(i=0;i<MINORS;i++){
@@ -256,6 +249,15 @@ revert_allocation:
 	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
 	return 0;
+
+  revert_allocation:
+	for(;i>=0;i--){
+		free_page((unsigned long)objects[i].hi_prio_stream);
+		free_page((unsigned long)objects[i].low_prio_stream);
+	}
+	return -ENOMEM;
+
+
 
 
 }

@@ -5,7 +5,7 @@
 #include <string.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
-#include <mfdevice_ioctl.h>
+#include "mfdevice_ioctl.h"
 int i;
 char buff[4096];
 #define DATA "ciao a tutti\n"
