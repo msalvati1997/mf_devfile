@@ -97,7 +97,6 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   object_state *the_object;
 
   the_object = objects + minor;
-  printk("%s: somebody called a write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
 
   if (the_object->op==0) { //non blocking operation 
       spin_trylock(&(the_object->synchronizer));
@@ -114,11 +113,13 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
  	    return -ENOSR;//out of stream resources
       } 
    if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      printk("%s: somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
       ret = copy_from_user(&(the_object->hi_prio_stream[*off]),buff,len);
      *off += (len - ret);
       the_object->hi_valid_bytes = *off;
       spin_unlock(&(the_object->synchronizer));
     } else { //low priority stream
+        printk("%s: somebody called a low-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
        if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
   	   spin_unlock(&(the_object->synchronizer));
  	     return -ENOSR;//out of stream resources
@@ -140,7 +141,6 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   object_state *the_object;
 
   the_object = objects + minor;
-  printk("%s: somebody called a read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
 
   if (the_object->op==0) { //non blocking operation 
     spin_trylock(&(the_object->synchronizer));
@@ -157,11 +157,15 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
  	    return -ENOSR;//out of stream resources
       } 
    if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+     printk("%s: somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+
       ret = copy_to_user(buff,&(the_object->hi_prio_stream[*off]),len);
      *off += (len - ret);
       the_object->hi_valid_bytes = *off;
      spin_unlock(&(the_object->synchronizer));
     } else { //low priority stream
+         printk("%s: somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+
        if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
   	   spin_unlock(&(the_object->synchronizer));
  	     return -ENOSR;//out of stream resources
