@@ -3,13 +3,9 @@
 Driver Name		:		Multiflowdriver
 Author			:		MARTINA SALVATI
 License			:		GPL
-Description		:		LINUX DEVICE DRIVER PROJECT
+Description		:		LINUX MULTI_FLOW DEVICE DRIVER PROJECT
 ===============================================================================
 */
-
-/*  
- *  baseline char device driver with limitation on minor numbers - configurable in terms of concurrency 
- */
 
 #define EXPORT_SYMTAB
 #include <linux/kernel.h>
@@ -47,7 +43,7 @@ static int Major;            /* Major number assigned to broadcast device driver
 typedef struct _object_state{
   int prio;      
   int mop;
-  spinlock_t sl;
+  spinlock_t spin_synchronizer;
   struct mutex block_synchronizer;
 	int hi_valid_bytes;
 	int low_valid_bytes;
@@ -102,31 +98,65 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   the_object = objects + minor;
   printk("%s: somebody called a write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
 
-  if the_object.op==0 { //non blocking operation 
-
+  if (the_object.op==0) { //non blocking operation 
+     spin_lock(&(the_object->spin_synchronizer));
+      if(*off >= OBJECT_MAX_SIZE) {//offset too large
+     	mutex_unlock(&(the_object->spin_synchronizer));
+	    return -ENOSPC;//no space left on device
+     } 
+      if (the_object->prio) == 0 { //high priority stream 
+      if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
+  	  spin_unlock(&(the_object->spin_synchronizer));
+ 	    return -ENOSR;//out of stream resources
+      } 
+   if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      ret = copy_from_user(&(the_object->hi_prio_stream[*off]),buff,len);
+     *off += (len - ret);
+      the_object->hi_valid_bytes = *off;
+     spin_unlock(&(the_object->spin_synchronizer));
+    } else {
+       if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
+  	   spin_unlock(&(the_object->spin_synchronizer));
+ 	     return -ENOSR;//out of stream resources
+      } 
+     if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      ret = copy_from_user(&(the_object->low_prio_stream[*off]),buff,len);
+     *off += (len - ret);
+      the_object->low_valid_bytes = *off;
+     spin_unlock(&(the_object->spin_synchronizer));
+    }
   }
 
-  if the_object.op==1 {  //blocking operation 
+  if (the_object.op==1) {  //blocking operation 
      
     mutex_lock(&(the_object->block_synchronizer));
     if(*off >= OBJECT_MAX_SIZE) {//offset too large
    	mutex_unlock(&(the_object->block_synchronizer));
 	  return -ENOSPC;//no space left on device
     } 
-    if 
-    if(*off > the_object->valid_bytes) {//offset bwyond the current stream size
- 	  mutex_unlock(&(the_object->block_synchronizer));
-	  return -ENOSR;//out of stream resources
-   } 
+    if (the_object->prio == 0) { //high priority stream 
+      if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
+  	  mutex_unlock(&(the_object->block_synchronizer));
+ 	    return -ENOSR;//out of stream resources
+      } 
    if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
-   ret = copy_from_user(&(the_object->stream_content[*off]),buff,len);
-   *off += (len - ret);
-   the_object->valid_bytes = *off;
-   mutex_unlock(&(the_object->block_synchronizer));
+      ret = copy_from_user(&(the_object->hi_prio_stream[*off]),buff,len);
+     *off += (len - ret);
+      the_object->hi_valid_bytes = *off;
+     mutex_unlock(&(the_object->block_synchronizer));
+    } else {
+       if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
+  	   mutex_unlock(&(the_object->block_synchronizer));
+ 	     return -ENOSR;//out of stream resources
+      } 
+     if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      ret = copy_from_user(&(the_object->low_prio_stream[*off]),buff,len);
+     *off += (len - ret);
+      the_object->low_valid_bytes = *off;
+     mutex_unlock(&(the_object->block_synchronizer));
+    }
   }
-  
   return len - ret;
-
 }
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
@@ -138,23 +168,67 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   the_object = objects + minor;
   printk("%s: somebody called a read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
 
-  //need to lock in any case
-  mutex_lock(&(the_object->operation_synchronizer));
-  if(*off > the_object->valid_bytes) {
- 	 mutex_unlock(&(the_object->operation_synchronizer));
-	 return 0;
-  } 
-  if((the_object->valid_bytes - *off) < len) len = the_object->valid_bytes - *off;
-  ret = copy_to_user(buff,&(the_object->stream_content[*off]),len);
+  if (the_object.op==0) { //non blocking operation 
+    spin_lock(&(the_object->spin_synchronizer));
+    if(*off >= OBJECT_MAX_SIZE) {//offset too large
+   	spin_unlock(&(the_object->spin_synchronizer));
+	  return -ENOSPC;//no space left on device
+    } 
+    if (the_object->prio == 0) { //high priority stream 
+      if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
+  	  spin_unlock(&(the_object->spin_synchronizer));
+ 	    return -ENOSR;//out of stream resources
+      } 
+   if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      ret = copy_to_user(buff,&(the_object->hi_prio_stream[*off]),len);
+     *off += (len - ret);
+      the_object->hi_valid_bytes = *off;
+     spin_unlock(&(the_object->spin_synchronizer));
+    } else {
+       if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
+  	   spin_unlock(&(the_object->spin_synchronizer));
+ 	     return -ENOSR;//out of stream resources
+      } 
+     if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      ret = copy_to_user(buff,&(the_object->low_prio_stream[*off]),len);
+     *off += (len - ret);
+      the_object->low_valid_bytes = *off;
+     spin_unlock(&(the_object->block_synchronizer));
+    }
+  }
+
+  if (the_object.op==1) {  //blocking operation 
+     
+    mutex_lock(&(the_object->block_synchronizer));
+    if(*off >= OBJECT_MAX_SIZE) {//offset too large
+   	mutex_unlock(&(the_object->block_synchronizer));
+	  return -ENOSPC;//no space left on device
+    } 
+    if (the_object->prio == 0) { //high priority stream 
+      if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
+  	  mutex_unlock(&(the_object->block_synchronizer));
+ 	    return -ENOSR;//out of stream resources
+      } 
+   if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      ret = copy_to_user(buff,&(the_object->hi_prio_stream[*off]),len);
+     *off += (len - ret);
+      the_object->hi_valid_bytes = *off;
+     mutex_unlock(&(the_object->block_synchronizer));
+    } else {
+       if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
+  	   mutex_unlock(&(the_object->block_synchronizer));
+ 	     return -ENOSR;//out of stream resources
+      } 
+     if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off;
+      ret = copy_to_user(buff,&(the_object->low_prio_stream[*off]),len);
+     *off += (len - ret);
+      the_object->low_valid_bytes = *off;
+     mutex_unlock(&(the_object->block_synchronizer));
+    }
+  }
   
-  *off += (len - ret);
-  mutex_unlock(&(the_object->operation_synchronizer));
-
   return len - ret;
-   printk("%s: somebody called a read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
-
-  return 0;
-
+ 
 }
 
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long param) {
@@ -192,11 +266,8 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
       {
         the_object.mop=1
       }
-      
-
+    
 			break;
-
-	
 
 		default:
 			return -ENOTTY;
@@ -232,10 +303,11 @@ int init_module(void) {
 		objects[i].hi_prio_stream = (char*)__get_free_page(GFP_KERNEL);
 		objects[i].low_prio_stream = (char*)__get_free_page(GFP_KERNEL);
     mutex_init(&(objects[i].block_synchronizer));
+    spin_lock_init(&(objects[i].spin_synchronizer))
 		if(objects[i].hi_prio_stream == NULL || objects[i].low_prio_stream ==NULL ) goto revert_allocation;
 	}
 
-	Major = __register_chrdev(0, 0, 256, DEVICE_NAME, &fops);
+	Major = __register_chrdev(0, 0, 128, DEVICE_NAME, &fops);
 	//actually allowed minors are directly controlled within this driver
 
 	if (Major < 0) {
