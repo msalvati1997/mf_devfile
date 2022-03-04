@@ -26,7 +26,10 @@ void * the_thread(void* path){
 		return NULL;
 	}
 	printf("device %s successfully opened\n",device);
-	ioctl(fd,hi_ioctl, 1,0,1000); //low priority  - no blocking operations - TIMEOUT (milliseconds)
+	ioctl(fd,0,0); //low priority  - no blocking operations 
+
+	// 	ioctl(fd,1,2); //low priority  -  blocking operations with timeout
+
 	for(i=0;i<1000;i++) write(fd,DATA,SIZE);
 	return NULL;
 
