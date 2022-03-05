@@ -30,8 +30,9 @@ void * the_thread_hi(void* path){
 		return NULL;
 	}
 	printf("device %s successfully opened\n",device);
-	ioctl(fd, hi_ioctl, 1); //high priority  - no blocking operations 
-	printf("Writing on high priority stream...");
+    /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
+	ioctl(fd, IOCTL_HIGH_PRIO); //low priority  
+	ioctl(fd,IOCTL_NO_BLOCKING); //- no blocking operations 	printf("Writing on high priority stream...");
 	write(fd,DATA_HI,SIZE_HI);
 	return NULL;
 
@@ -52,7 +53,9 @@ void * the_thread_low(void* path){
 		return NULL;
 	}
 	printf("device %s successfully opened\n",device);
-	ioctl(fd, low_ioctl, 1); //low priority  - no blocking operations 
+	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
+	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
+	ioctl(fd,IOCTL_NO_BLOCKING); //- no blocking operations 
 	printf("Writing on low priority stream...");
 	write(fd,DATA_LOW,SIZE_LOW);
 	

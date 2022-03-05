@@ -99,7 +99,8 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   the_object = objects + minor;
 
   if (the_object->op==0) { //non blocking operation 
-      spin_trylock(&(the_object->synchronizer));
+      printk("non blocking op\n");
+      spin_lock(&(the_object->synchronizer));
   } else {
     spin_lock(&(the_object->synchronizer));  //blocking-operation
   }
@@ -180,29 +181,36 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
  
 }
 
-static long dev_ioctl(struct file *filp, unsigned int command, unsigned long param) {
+static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg) {
 
   int minor = get_minor(filp);
   object_state *the_object;
   the_object = objects + minor;
  
-  if ((int32_t*)param==0) {
-    the_object->op=0; //non blocking
-  } else {
-    the_object->op=1; //blocking
-    the_object->TIMEOUT=(int32_t*)param;
-  }
   switch (command) {
 
-		case hi_ioctl:
-      printk("%s: somebody called an hi-ioctl on dev with [major,minor] number [%d,%d] and command %u \n",MODNAME,get_major(filp),get_minor(filp),command);
-      the_object->prio=0;
-			break;
+    case IOCTL_RESET :
+       the_object->prio=DEFAULT_PRIO;
+       the_object->op=DEFAULT_OP;
+       the_object->TIMEOUT=DEFAULT_TIMER;
+       break;
 
-		case low_ioctl:
-      printk("%s: somebody called an low-ioctl on dev with [major,minor] number [%d,%d] and command %u \n",MODNAME,get_major(filp),get_minor(filp),command);
-      the_object->prio=1;
+		case IOCTL_HIGH_PRIO:
+    	the_object->prio = 0;
 			break;
+		case IOCTL_LOW_PRIO:
+    	the_object->prio = 1;
+			break;
+    case IOCTL_BLOCKING :
+      the_object->op = 1;
+			break;
+    case IOCTL_NO_BLOCKING:
+     	the_object->op = 0;
+			break;
+    case IOCTL_SETTIMER :
+      int timer =0;
+      timer = the_object->TIMEOUT;
+    	the_object->TIMEOUT= arg;
 
 		default:
 			return -ENOTTY;
@@ -212,6 +220,8 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long par
   return 0;
 
 }
+
+
 
 static struct file_operations fops = {
   .owner = THIS_MODULE,//do not forget this
