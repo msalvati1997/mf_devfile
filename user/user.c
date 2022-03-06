@@ -57,9 +57,9 @@ void * the_thread_read_hi(void* path){
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
 	ioctl(fd,IOCTL_SETTIMER,10); //SET TIMER
-	char * buff = malloc(sizeof(char *)*4);
-	read(fd,buff,sizeof(char *)*4);
-	printf("%s read\n",buff);
+	char * buff = malloc(sizeof(char)*4);
+	read(fd,buff,sizeof(char)*4);
+	printf("READER FROM HIGH READ %s \n",buff);
 	return NULL;
 }
 
@@ -80,7 +80,7 @@ void * the_thread_write_low(void* path){
 	printf("device %s successfully opened\n",device);
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
-	ioctl(fd,IOCTL_NO_BLOCKING); //- no blocking operations 
+	ioctl(fd,IOCTL_BLOCKING); //- no blocking operations 
 	ioctl(fd,IOCTL_SETTIMER,2); //SET TIMER
 	printf("Writing on low priority stream...\n");
 	write(fd,DATA_LOW,SIZE_LOW);
@@ -106,11 +106,11 @@ void * the_thread_read_low(void* path){
 	printf("device %s successfully opened\n",device);
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
-	ioctl(fd,IOCTL_NO_BLOCKING); //- no blocking operations 
+	ioctl(fd,IOCTL_BLOCKING); //- no blocking operations 
 	ioctl(fd,IOCTL_SETTIMER,2); //SET TIMER
-	char * buff = malloc(sizeof(char *)*4);
-	read(fd,buff,sizeof(char *)*4);
-	printf("%s read\n",buff);
+	char * buff = malloc(sizeof(char)*4);
+	read(fd,buff,sizeof(char)*4);
+	printf("READED FROM LOW READ %s\n",buff);
 
 	return NULL;
 
@@ -138,13 +138,16 @@ int main(int argc, char** argv){
 	sprintf(buff,"mknod %s%d c %d %i\n",path,i,major,i);
 	system(buff);
 	sprintf(buff,"%s%d",path,i);
-	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 	sleep(2);
-	pthread_create(&tid,NULL,the_thread_read_hi,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));
 	sleep(2);
-	pthread_create(&tid,NULL,the_thread_read_hi,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));
  }
      pause();
      return 0;
