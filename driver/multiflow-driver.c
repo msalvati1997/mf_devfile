@@ -203,7 +203,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          off += (len - ret);
          the_object->low_prio_stream+=len;
          the_object->low_valid_bytes-=len;
-        printk("after read LOW LEVEL STREAM : %s \n", the_object->hi_prio_stream);
+        printk("after read LOW LEVEL STREAM : %s \n", the_object->low_prio_stream);
          mutex_unlock(&(the_object->mutex)); 
        }
       }
