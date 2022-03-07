@@ -19,6 +19,7 @@ Description		:		LINUX MULTI_FLOW DEVICE DRIVER PROJECT
 #include <linux/wait.h>
 #include <linux/slab.h>
 #include "mfdevice_ioctl.h"
+#include <linux/jiffies.h>
 
 
 MODULE_LICENSE("GPL");
@@ -47,6 +48,7 @@ typedef struct _object_state{
   int prio;      
   int op;
   int TIMEOUT;
+  unsigned long jiffies;
   struct mutex mutex;
 	wait_queue_head_t hi_queue; //wait event queue for high pio requests
 	wait_queue_head_t low_queue;  //wait event queue for low prio requess
@@ -70,24 +72,23 @@ static int dev_open(struct inode *inode, struct file *file) {
    minor = get_minor(file);
 
    if(minor >= MINORS){
-	return -ENODEV;
+    	return -ENODEV;
    }
 
    printk("%s: device file successfully opened for object with minor %d\n",MODNAME,minor);
-//device opened by a default nop
+   //device opened by a default nop
    return 0;
-
 }
 
 
 static int dev_release(struct inode *inode, struct file *file) {
 
-  int minor;
-  minor = get_minor(file);
+   int minor;
+   minor = get_minor(file);
 
 
    printk("%s: device file closed\n",MODNAME);
-//device closed by default nop
+   //device closed by default nop
    return 0;
 
 }
@@ -108,8 +109,8 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
       }
   } else { //blocking operation
       if (the_object->prio == 0) { //high priority stream 
-        add_wait_queue(&dev->hi_queue, &waita);	     	 
-        if (schedule_timeout(the_object->TIMEOUT) == 0) { // if timeout expired - remove from wait queue
+        add_wait_queue(&the_object->hi_queue, &waita);	     	 
+        if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
                   printk(1, "%s - command timed out.", __func__);
                   ret = -ETIMEDOUT;
                   remove_wait_queue(&the_object->hi_queue, &waita);
@@ -137,18 +138,18 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
             printk("after write HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
             mutex_unlock(&(the_object->mutex)); 
          }
-        if(list_empty(&the_object->hi_queue)) {
+        if(list_empty(&(&the_object->hi_queue)->head)) {
             wake_up_interruptible(&the_object->low_queue);  //wake up the process attending to the low prio queue
         }
       } else { //low priority stream
-        add_wait_queue(&dev->hi_queue, &waita);
-        if (schedule_timeout(the_object->TIMEOUT) == 0) { // if timeout expired - remove from wait queue
+        add_wait_queue(&the_object->hi_queue, &waita);
+        if (schedule_timeout(the_object->jiffies) == 0) {  //if timeout expired - remove from wait queue
                   printk(1, "%s - command timed out.", __func__);
                   ret = -ETIMEDOUT;
                   remove_wait_queue(&the_object->low_queue, &waita);
                   return ret;
         }
-        if((list_empty(&the_object->hi_queue)) {
+        if(list_empty(&(&the_object->hi_queue)->head)) {
               remove_wait_queue(&the_object->low_queue, &waita);
               if(ret = mutex_lock_interruptible(&the_object->mutex)) {
                     return ret;
@@ -261,8 +262,9 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
     case IOCTL_SETTIMER :
       int timer =0;
       timer = the_object->TIMEOUT;
-    	the_object->TIMEOUT= arg;
-      printk("Set timeout : %d", the_object->TIMEOUT);
+    	the_object->TIMEOUT= arg; //milliseconds
+      the_object->jiffies=msecs_to_jiffies(the_object->TIMEOUT);
+      printk("Set timeout milliseconds: %d // Set timeout jiffies %ld\n", the_object->TIMEOUT, the_object->jiffies);
 		default:
 			return -ENOTTY;
 	}

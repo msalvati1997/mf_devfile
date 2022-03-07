@@ -33,7 +33,7 @@ void * the_thread_write_hi(void* path){
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
-	ioctl(fd,IOCTL_SETTIMER,10); //SET TIMER
+	ioctl(fd,IOCTL_SETTIMER,1000); //SET TIMER in milliseconds
 	printf("Writing on high priority stream...\n");
 	write(fd,DATA_HI,SIZE_HI);
 	return NULL;
@@ -56,7 +56,7 @@ void * the_thread_read_hi(void* path){
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
-	ioctl(fd,IOCTL_SETTIMER,10); //SET TIMER
+	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*4);
 	read(fd,buff,sizeof(char)*4);
 	printf("READER FROM HIGH READ %s \n",buff);
@@ -80,8 +80,8 @@ void * the_thread_write_low(void* path){
 	printf("device %s successfully opened\n",device);
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
-	ioctl(fd,IOCTL_BLOCKING); //- no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,2); //SET TIMER
+	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
+	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
 	printf("Writing on low priority stream...\n");
 	write(fd,DATA_LOW,SIZE_LOW);
 	
@@ -106,8 +106,8 @@ void * the_thread_read_low(void* path){
 	printf("device %s successfully opened\n",device);
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
-	ioctl(fd,IOCTL_BLOCKING); //- no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,2); //SET TIMER
+	ioctl(fd,IOCTL_BLOCKING); // blocking operations 
+	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*4);
 	read(fd,buff,sizeof(char)*4);
 	printf("READED FROM LOW READ %s\n",buff);
@@ -140,15 +140,13 @@ int main(int argc, char** argv){
 	sprintf(buff,"%s%d",path,i);
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
-	sleep(2);
-	pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));
-	sleep(2);
-	pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));
- }
+    //pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));
+    }
      pause();
      return 0;
 }
