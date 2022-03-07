@@ -99,19 +99,27 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   int minor = get_minor(filp);
   int ret;
   object_state *the_object;
-
+  DECLARE_WAITQUEUE(waita, current);
   the_object = objects + minor;
 
   if (the_object->op==0) { //non blocking operation 
-      printk("non blocking op\n");
-      if(mutex_trylock(&the_object->mutex)==false) 
-          return -EBUSY;  // return to the caller   
+      if(!mutex_trylock(&the_object->mutex)) {
+         return -EAGAIN;
+      }
   } else { //blocking operation
       if (the_object->prio == 0) { //high priority stream 
-        printk("process %d(%s) is going to sleep in high prio wait queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
-        wait_event_timeout(the_object->hi_queue, 0, the_object->TIMEOUT);
-        mutex_lock(&the_object->mutex);
-         if(*off >= OBJECT_MAX_SIZE) {//offset too large
+        add_wait_queue(&dev->hi_queue, &waita);	     	 
+        if (schedule_timeout(the_object->TIMEOUT) == 0) { // if timeout expired - remove from wait queue
+                  printk(1, "%s - command timed out.", __func__);
+                  ret = -ETIMEDOUT;
+                  remove_wait_queue(&the_object->hi_queue, &waita);
+                  return ret;
+        }
+        remove_wait_queue(&the_object->hi_queue, &waita);
+        if (ret = mutex_lock_interruptible(&the_object->mutex)) {
+           return ret;
+        }
+        if(*off >= OBJECT_MAX_SIZE) {//offset too large
      	    mutex_unlock(&(the_object->mutex));
 	        return -ENOSPC;//no space left on device
          }
@@ -129,10 +137,23 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
             printk("after write HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
             mutex_unlock(&(the_object->mutex)); 
          }
+        if(list_empty(&the_object->hi_queue)) {
+            wake_up_interruptible(&the_object->low_queue);  //wake up the process attending to the low prio queue
+        }
       } else { //low priority stream
-        printk("process %d(%s) is going to sleep in wait prio wait queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
-        wait_event_timeout(the_object->low_queue, 0, the_object->TIMEOUT);
-        mutex_lock(&the_object->mutex);
+        add_wait_queue(&dev->hi_queue, &waita);
+        if (schedule_timeout(the_object->TIMEOUT) == 0) { // if timeout expired - remove from wait queue
+                  printk(1, "%s - command timed out.", __func__);
+                  ret = -ETIMEDOUT;
+                  remove_wait_queue(&the_object->low_queue, &waita);
+                  return ret;
+        }
+        if((list_empty(&the_object->hi_queue)) {
+              remove_wait_queue(&the_object->low_queue, &waita);
+              if(ret = mutex_lock_interruptible(&the_object->mutex)) {
+                    return ret;
+              }  
+        }
         if(*off >= OBJECT_MAX_SIZE) {//offset too large
      	     mutex_unlock(&(the_object->mutex));
 	         return -ENOSPC;//no space left on device
