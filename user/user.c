@@ -5,15 +5,46 @@
 #include <string.h>
 #include <pthread.h>
 #include <sys/ioctl.h>
-#include "mfdevice_ioctl.h"
 int i;
 char buff[4096];
 #define DATA_HI "HIGH PRIO  "
 #define DATA_LOW "LOW PRIO   "
+#define TYPE 'h'
 
 #define SIZE_HI strlen(DATA_HI)
 #define SIZE_LOW strlen(DATA_LOW)
+#define IOCTL_RESET	_IO(TYPE, 0)
 
+#define IOCTL_HIGH_PRIO _IO(TYPE,1)    
+#define IOCTL_LOW_PRIO _IO(TYPE,2)    
+
+#define IOCTL_BLOCKING _IO(TYPE,3)  
+#define IOCTL_NO_BLOCKING _IO(TYPE,4)  
+
+#define IOCTL_SETTIMER _IOWR(TYPE,5,int)  
+
+static char *rand_string(char *str, size_t size)
+{
+    const char charset[] = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJK...";
+    if (size) {
+        --size;
+        for (size_t n = 0; n < size; n++) {
+            int key = rand() % (int) (sizeof charset - 1);
+            str[n] = charset[key];
+        }
+        str[size] = '\0';
+    }
+    return str;
+}
+
+char* rand_string_alloc(size_t size)
+{
+     char *s = malloc(size + 1);
+     if (s) {
+         rand_string(s, size);
+     }
+     return s;
+}
 
 void * the_thread_write_hi(void* path){
 
@@ -35,7 +66,9 @@ void * the_thread_write_hi(void* path){
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
 	ioctl(fd,IOCTL_SETTIMER,1000); //SET TIMER in milliseconds
 	printf("Writing on high priority stream...\n");
-	write(fd,DATA_HI,SIZE_HI);
+    char* data = strcat(DATA_HI,rand_string_alloc(sizeof(char)*4));
+	char* dt = strcat(data,"\n");
+	write(fd,dt,strlen(dt));
 	return NULL;
 }
 void * the_thread_read_hi(void* path){
@@ -83,7 +116,9 @@ void * the_thread_write_low(void* path){
 	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
 	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
 	printf("Writing on low priority stream...\n");
-	write(fd,DATA_LOW,SIZE_LOW);
+	char* data = strcat(DATA_HI,rand_string_alloc(sizeof(char)*4));
+	char* dt = strcat(data,"\n");
+	write(fd,dt,strlen(dt));
 	
 	return NULL;
 
@@ -142,7 +177,7 @@ int main(int argc, char** argv){
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	//pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 //	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
     //pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));

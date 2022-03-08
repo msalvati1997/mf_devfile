@@ -13,7 +13,6 @@ Description		:		LINUX MULTI_FLOW DEVICE DRIVER PROJECT
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Martina Salvati");
 
-#define MODNAME "MULTIFLOW DRIVER"
 #define MULTIFLOWDRIVER_WORKQUEUE "multiflowdriver_workqueue"
 
 //driver operations
@@ -41,6 +40,14 @@ static int Major;            /* Major number assigned to broadcast device driver
 #define get_minor(session)	MINOR(session->f_dentry->d_inode->i_rdev)
 #endif
 
+struct __operation_data {
+        struct file *filp;
+        const char *buff;
+        size_t len; 
+        loff_t *off;
+};
+typedef struct __operation_data operation_data_t;
+
 typedef struct _object_state{
   int prio;      
   int op;
@@ -56,21 +63,51 @@ typedef struct _object_state{
 	int low_valid_bytes;
 	char * hi_prio_stream; //the I/O node is a buffer in memory
 	char * low_prio_stream; //the I/O node is a buffer in memory
+  operation_data_t data_op;
 
 } object_state;
+
+
 
 #define MINORS 128
 object_state objects[MINORS];
 
 #define OBJECT_MAX_SIZE  (4096) //just one page
 
-static void deferred_work(struct work_struct *work)
-{
+static void deferred_work(struct work_struct *work) {
+   object_state *the_object;
+   the_object = container_of(work, object_state,  multiflowdriver_work);
+  
+	 PINFO("multiflowdriver_work executing of deferring write of data : %s\n", the_object->data_op.buff);
+     if (the_object->op==0) { 
+        if(mutex_trylock(&the_object->mutex_low)) { //non blocking 
+           PERR("non blocking operation : can't do the operation\n");;
+        } 
+     }   else {
+      if (mutex_lock_interruptible(&the_object->mutex_low)) { //blocking operation //sync
+           PERR("mutex problem\n");
+      }
+     }
+   if(*(the_object->data_op).off >= OBJECT_MAX_SIZE) {//offset too large
+          mutex_unlock(&the_object->mutex_low);
+	        PERR("offset too large\n");
+        }
+   if(*(the_object->data_op).off > the_object->low_valid_bytes) {//offset bwyond the current stream size
+         mutex_unlock(&the_object->mutex_low);
+ 	       PERR("out of stream resources\n");
+       }  
+   if((OBJECT_MAX_SIZE - *((the_object->data_op).off)) < ((the_object->data_op).len)) ((the_object->data_op).len) = OBJECT_MAX_SIZE - *((the_object->data_op).off); {
+        PDEBUG("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
+        PINFO("somebody called a low-prio deferred - write on dev with [major,minor] number [%d,%d]\n",get_major((the_object->data_op).filp),get_minor((the_object->data_op).filp));
+        *(the_object->data_op).off  += the_object->low_valid_bytes;
+        int ret = copy_from_user(&(the_object->low_prio_stream[*(the_object->data_op).off ]),(the_object->data_op).buff ,(the_object->data_op).len);
+        *(the_object->data_op).off  += ((the_object->data_op).len - ret);
+        the_object->low_valid_bytes =  *(the_object->data_op).off ;
+        PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
+        mutex_unlock(&(the_object->mutex_low));
+      } 
 
-   //object_state *the_object;
-   //the_object = container_of(work, objects,  object_state); 
-	 PINFO("multiflowdriver_work executing \n");
-}
+ }
  
 
 /* the actual driver */
@@ -84,7 +121,7 @@ static int dev_open(struct inode *inode, struct file *file) {
     	return -ENODEV;
    }
 
-   PINFO("%s: device file successfully opened for object with minor %d\n",MODNAME,minor);
+   PINFO("device file successfully opened for object with minor %d\n",minor);
    //device opened by a default nop
    return 0;
 }
@@ -96,7 +133,7 @@ static int dev_release(struct inode *inode, struct file *file) {
    minor = get_minor(file);
 
 
-   PINFO("%s: device file closed\n",MODNAME);
+   PINFO("device file closed\n");
    //device closed by default nop
    return 0;
 
@@ -115,19 +152,14 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   if (the_object->op==0) { //non blocking operation 
    if (the_object->prio == 0) {
       if(mutex_trylock(&the_object->mutex_hi)) {
-        PINFO("operation blocked\n");
          return -EAGAIN;
       } else {
          goto write_hi;
       }
    } else {
-     if(mutex_trylock(&the_object->mutex_low)) {
-         PINFO("operation blocked\n");
-         return -EAGAIN;
-     } else {
-       goto write_low;
+       goto write_low; //async op 
      }
-  } } else { //blocking operation
+  }  else { //blocking operation
       if (the_object->prio == 0) { //high priority stream 
         add_wait_queue(&the_object->hi_queue, &waita);	     	 
         if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
@@ -135,24 +167,18 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
                remove_wait_queue(&the_object->hi_queue, &waita);
                return ETIMEDOUT;
         }
-        if (mutex_lock_interruptible(&the_object->mutex_hi)) {
+        if (mutex_lock_interruptible(&the_object->mutex_hi)) { //sync operation
            return -ERESTARTSYS;
         } else {
             remove_wait_queue(&the_object->hi_queue, &waita);
             goto write_hi;
         }
       } else { //low priority stream
-        add_wait_queue(&the_object->low_queue, &waita);
         if (schedule_timeout(the_object->jiffies) == 0) {  //if timeout expired - remove from wait queue
                   PINFO("%s - command timed out.", __func__);
                   ret = -ETIMEDOUT;
-                  remove_wait_queue(&the_object->low_queue, &waita);
                   return ret;
-        }
-        if(mutex_lock_interruptible(&the_object->mutex_low)) {
-          return -ERESTARTSYS;
         } else {
-           remove_wait_queue(&the_object->low_queue, &waita);
            goto write_low;
         }
     }
@@ -170,7 +196,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
           }  
         if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PDEBUG("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
-           PINFO("%s: somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+           PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
            *off += the_object->hi_valid_bytes;
            ret = copy_from_user(&(the_object->hi_prio_stream[*off]),buff,len);
            *off += (len - ret);
@@ -178,26 +204,12 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
            PDEBUG("after write HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
            mutex_unlock(&(the_object->mutex_hi)); 
          }
+         return len-ret;
   write_low :
-    if(*off >= OBJECT_MAX_SIZE) {//offset too large
-     	     mutex_unlock(&(the_object->mutex_low));
-	         return -ENOSPC;//no space left on device
-        }
-       if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
-  	     mutex_unlock(&(the_object->mutex_low));
- 	       return -ENOSR;//out of stream resources
-       } 
-       if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
-        PDEBUG("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
-        PINFO("%s: somebody called a low-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
-        *off += the_object->low_valid_bytes;
-        ret = copy_from_user(&(the_object->low_prio_stream[*off]),buff,len);
-        *off += (len - ret);
-        the_object->low_valid_bytes = *off;
-        PDEBUG("after write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
-        mutex_unlock(&(the_object->mutex_low));
-      } 
-      return 0;
+    operation_data_t data = { .buff = buff, .filp = filp, .off = off, .len = len};
+    the_object->data_op=data;
+    queue_work(the_object->multiflowdriver_wq,&the_object->multiflowdriver_work);	
+    return 0;
 }
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
@@ -256,7 +268,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         } 
         if((the_object->hi_valid_bytes - *off) < len) len = the_object->hi_valid_bytes - *off; {
          PDEBUG("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
-         PINFO("%s: somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+         PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
          ret = copy_to_user(buff,&(the_object->hi_prio_stream[*off]),len);
          off += (len - ret);
          the_object->hi_prio_stream+=len;
@@ -272,7 +284,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         } 
         if((the_object->low_valid_bytes - *off) < len) len = the_object->low_valid_bytes - *off; {
          PDEBUG("current LOW LEVEL STREAM : %s \n", the_object->low_prio_stream);
-         PINFO("%s: somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+         PINFO("somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
          ret = copy_to_user(buff,&(the_object->low_prio_stream[*off]),len);
          off += (len - ret);
          the_object->low_prio_stream+=len;
@@ -338,8 +350,8 @@ static struct file_operations fops = {
 
 
 
-int init_module(void) {
-
+static int __init multiflowdriver_init(void)
+{
 int i;
 
 	//initialize the drive internal state
@@ -363,11 +375,11 @@ int i;
 	//actually allowed minors are directly controlled within this driver
 
 	if (Major < 0) {
-	  printk("%s: registering device failed\n",MODNAME);
+	  printk("registering device failed\n");
 	  return Major;
 	}
 
-	PINFO("%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
+	PINFO("new device registered, it is assigned major number %d\n", Major);
 
 	return 0;
 
@@ -381,7 +393,7 @@ int i;
 
 }
 
-void cleanup_module(void) {
+static void __exit multiflowdriver_exit(void) {
 
 	int i;
 	for(i=0;i<MINORS;i++){
@@ -392,13 +404,13 @@ void cleanup_module(void) {
 
 	unregister_chrdev(Major, DEVICE_NAME);
 
-	PINFO("%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
+	PINFO("%s: new device unregistered, it was assigned major number %d\n", Major);
 
 	return;
 
 }
-
-
+module_init(multiflowdriver_init);
+module_exit(multiflowdriver_exit);
 
 //module_param(enabled, int, S_IRUGO);
 
