@@ -7,8 +7,8 @@
 #include <sys/ioctl.h>
 int i;
 char buff[4096];
-#define DATA_HI "HIGH PRIO  "
-#define DATA_LOW "LOW PRIO   "
+#define DATA_HI "high\n"
+#define DATA_LOW "low\n"
 #define TYPE 'h'
 
 #define SIZE_HI strlen(DATA_HI)
@@ -65,11 +65,13 @@ void * the_thread_write_hi(void* path){
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
 	ioctl(fd,IOCTL_SETTIMER,1000); //SET TIMER in milliseconds
-	printf("Writing on high priority stream...\n");
-    char* data = strcat(DATA_HI,rand_string_alloc(sizeof(char)*4));
-	char* dt = strcat(data,"\n");
-	write(fd,dt,strlen(dt));
-	return NULL;
+	char * buff = malloc(sizeof(char)*8);
+	char* data = rand_string_alloc(sizeof(char)*4);
+	buff = strcat(data," ");
+	buff = strcat(data,DATA_HI);
+    printf("Writing on high priority stream...%s \n",buff);
+	write(fd,buff,strlen(buff));
+		return NULL;
 }
 void * the_thread_read_hi(void* path){
 
@@ -116,9 +118,12 @@ void * the_thread_write_low(void* path){
 	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
 	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
 	printf("Writing on low priority stream...\n");
-	char* data = strcat(DATA_HI,rand_string_alloc(sizeof(char)*4));
-	char* dt = strcat(data,"\n");
-	write(fd,dt,strlen(dt));
+	char * buff = malloc(sizeof(char)*8);
+	char* data = rand_string_alloc(sizeof(char)*4);
+	buff = strcat(data," ");
+	buff = strcat(data,DATA_LOW);
+	printf("Writing on low priority stream...%s \n",buff);
+	write(fd,buff,strlen(buff));
 	
 	return NULL;
 

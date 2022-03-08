@@ -77,8 +77,7 @@ object_state objects[MINORS];
 static void deferred_work(struct work_struct *work) {
    object_state *the_object;
    the_object = container_of(work, object_state,  multiflowdriver_work);
-  
-	 PINFO("multiflowdriver_work executing of deferring write of data : %s\n", the_object->data_op.buff);
+   PINFO("multiflowdriver_work executing of deferring write of data : %s\n", the_object->data_op.buff);
      if (the_object->op==0) { 
         if(mutex_trylock(&the_object->mutex_low)) { //non blocking 
            PERR("non blocking operation : can't do the operation\n");;
