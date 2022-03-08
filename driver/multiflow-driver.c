@@ -1,6 +1,6 @@
 /*
 ===============================================================================
-Driver Name		:		Multiflowdriver
+Driver Name		:		multiflow-driver
 Author			:		MARTINA SALVATI
 License			:		GPL
 Description		:		LINUX MULTI_FLOW DEVICE DRIVER PROJECT
@@ -8,31 +8,28 @@ Description		:		LINUX MULTI_FLOW DEVICE DRIVER PROJECT
 */
 
 #define EXPORT_SYMTAB
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/init.h>
-#include <linux/fs.h>
-#include <linux/sched.h>	
-#include <linux/pid.h>		/* For pid types */
-#include <linux/tty.h>		/* For the tty declarations */
-#include <linux/version.h>	/* For LINUX_VERSION_CODE */
-#include <linux/wait.h>
-#include <linux/slab.h>
-#include "mfdevice_ioctl.h"
-#include <linux/jiffies.h>
-
+#include "multiflow-driver.h"
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Martina Salvati");
 
-#define MODNAME "MULTIFLOW DEV"
+#define MODNAME "MULTIFLOW DRIVER"
+#define MULTIFLOWDRIVER_WORKQUEUE "multiflowdriver_workqueue"
 
+//driver operations
 static int dev_open(struct inode *, struct file *);
 static int dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
+static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
 
-#define DEVICE_NAME "mf-dev"  /* Device file name in /dev/ - not mandatory  */
 
+static void deferred_work(struct work_struct *work);
+
+static int enabled;
+
+static int nthreads;
+
+static int nbytes;
 
 static int Major;            /* Major number assigned to broadcast device driver */
 
@@ -49,9 +46,12 @@ typedef struct _object_state{
   int op;
   int TIMEOUT;
   unsigned long jiffies;
-  struct mutex mutex;
+  struct mutex mutex_hi;
+  struct mutex mutex_low;
 	wait_queue_head_t hi_queue; //wait event queue for high pio requests
 	wait_queue_head_t low_queue;  //wait event queue for low prio requess
+  struct workqueue_struct *multiflowdriver_wq;
+	struct work_struct multiflowdriver_work;
 	int hi_valid_bytes;
 	int low_valid_bytes;
 	char * hi_prio_stream; //the I/O node is a buffer in memory
@@ -64,6 +64,15 @@ object_state objects[MINORS];
 
 #define OBJECT_MAX_SIZE  (4096) //just one page
 
+static void deferred_work(struct work_struct *work)
+{
+
+   //object_state *the_object;
+   //the_object = container_of(work, objects,  object_state); 
+	 PINFO("multiflowdriver_work executing \n");
+}
+ 
+
 /* the actual driver */
 
 static int dev_open(struct inode *inode, struct file *file) {
@@ -75,7 +84,7 @@ static int dev_open(struct inode *inode, struct file *file) {
     	return -ENODEV;
    }
 
-   printk("%s: device file successfully opened for object with minor %d\n",MODNAME,minor);
+   PINFO("%s: device file successfully opened for object with minor %d\n",MODNAME,minor);
    //device opened by a default nop
    return 0;
 }
@@ -87,7 +96,7 @@ static int dev_release(struct inode *inode, struct file *file) {
    minor = get_minor(file);
 
 
-   printk("%s: device file closed\n",MODNAME);
+   PINFO("%s: device file closed\n",MODNAME);
    //device closed by default nop
    return 0;
 
@@ -104,78 +113,91 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   the_object = objects + minor;
 
   if (the_object->op==0) { //non blocking operation 
-      if(!mutex_trylock(&the_object->mutex)) {
+   if (the_object->prio == 0) {
+      if(mutex_trylock(&the_object->mutex_hi)) {
+        PINFO("operation blocked\n");
          return -EAGAIN;
+      } else {
+         goto write_hi;
       }
-  } else { //blocking operation
+   } else {
+     if(mutex_trylock(&the_object->mutex_low)) {
+         PINFO("operation blocked\n");
+         return -EAGAIN;
+     } else {
+       goto write_low;
+     }
+  } } else { //blocking operation
       if (the_object->prio == 0) { //high priority stream 
         add_wait_queue(&the_object->hi_queue, &waita);	     	 
         if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
-                  printk(1, "%s - command timed out.", __func__);
-                  ret = -ETIMEDOUT;
-                  remove_wait_queue(&the_object->hi_queue, &waita);
-                  return ret;
+               PINFO("%s - command timed out.", __func__);
+               remove_wait_queue(&the_object->hi_queue, &waita);
+               return ETIMEDOUT;
         }
-        remove_wait_queue(&the_object->hi_queue, &waita);
-        if (ret = mutex_lock_interruptible(&the_object->mutex)) {
-           return ret;
-        }
-        if(*off >= OBJECT_MAX_SIZE) {//offset too large
-     	    mutex_unlock(&(the_object->mutex));
-	        return -ENOSPC;//no space left on device
-         }
-         if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
-  	       mutex_unlock(&(the_object->mutex));
- 	         return -ENOSR;//out of stream resources
-          }  
-        if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
-           printk("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
-           printk("%s: somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
-           *off += the_object->hi_valid_bytes;
-           ret = copy_from_user(&(the_object->hi_prio_stream[*off]),buff,len);
-           *off += (len - ret);
-            the_object->hi_valid_bytes = *off;
-            printk("after write HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
-            mutex_unlock(&(the_object->mutex)); 
-         }
-        if(list_empty(&(&the_object->hi_queue)->head)) {
-            wake_up_interruptible(&the_object->low_queue);  //wake up the process attending to the low prio queue
+        if (mutex_lock_interruptible(&the_object->mutex_hi)) {
+           return -ERESTARTSYS;
+        } else {
+            remove_wait_queue(&the_object->hi_queue, &waita);
+            goto write_hi;
         }
       } else { //low priority stream
-        add_wait_queue(&the_object->hi_queue, &waita);
+        add_wait_queue(&the_object->low_queue, &waita);
         if (schedule_timeout(the_object->jiffies) == 0) {  //if timeout expired - remove from wait queue
-                  printk(1, "%s - command timed out.", __func__);
+                  PINFO("%s - command timed out.", __func__);
                   ret = -ETIMEDOUT;
                   remove_wait_queue(&the_object->low_queue, &waita);
                   return ret;
         }
-        if(list_empty(&(&the_object->hi_queue)->head)) {
-              remove_wait_queue(&the_object->low_queue, &waita);
-              if(ret = mutex_lock_interruptible(&the_object->mutex)) {
-                    return ret;
-              }  
+        if(mutex_lock_interruptible(&the_object->mutex_low)) {
+          return -ERESTARTSYS;
+        } else {
+           remove_wait_queue(&the_object->low_queue, &waita);
+           goto write_low;
         }
+    }
+  }
+  return len - ret;
+
+  write_hi : 
         if(*off >= OBJECT_MAX_SIZE) {//offset too large
-     	     mutex_unlock(&(the_object->mutex));
+     	    mutex_unlock(&(the_object->mutex_hi));
+	        return -ENOSPC;//no space left on device
+         }
+         if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
+  	       mutex_unlock(&(the_object->mutex_hi));
+ 	         return -ENOSR;//out of stream resources
+          }  
+        if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
+           PDEBUG("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
+           PINFO("%s: somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+           *off += the_object->hi_valid_bytes;
+           ret = copy_from_user(&(the_object->hi_prio_stream[*off]),buff,len);
+           *off += (len - ret);
+           the_object->hi_valid_bytes = *off;
+           PDEBUG("after write HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
+           mutex_unlock(&(the_object->mutex_hi)); 
+         }
+  write_low :
+    if(*off >= OBJECT_MAX_SIZE) {//offset too large
+     	     mutex_unlock(&(the_object->mutex_low));
 	         return -ENOSPC;//no space left on device
         }
        if(*off > the_object->low_valid_bytes) {//offset bwyond the current stream size
-  	     mutex_unlock(&(the_object->mutex));
+  	     mutex_unlock(&(the_object->mutex_low));
  	       return -ENOSR;//out of stream resources
        } 
        if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
-        printk("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
-        printk("%s: somebody called a low-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+        PDEBUG("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
+        PINFO("%s: somebody called a low-prio write on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
         *off += the_object->low_valid_bytes;
         ret = copy_from_user(&(the_object->low_prio_stream[*off]),buff,len);
         *off += (len - ret);
         the_object->low_valid_bytes = *off;
-         printk("after write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
-        mutex_unlock(&(the_object->mutex));
+        PDEBUG("after write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
+        mutex_unlock(&(the_object->mutex_low));
       } 
-    }
-  }
-  return len - ret;
+      return 0;
 }
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
@@ -187,51 +209,80 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   the_object = objects + minor;
 
    if (the_object->op==0) { //non blocking operation 
-      printk("non blocking op\n");
-      if(mutex_trylock(&the_object->mutex)==false) 
-          return -EBUSY;  // return to the caller   
+     if(the_object->prio==0 ) {
+           if(mutex_trylock(&the_object->mutex_hi)) { 
+          return -EAGAIN;// return to the caller   
+      } else {
+          goto read_hi;
+      }
+     } else {
+         if(mutex_trylock(&the_object->mutex_low)) { 
+          return -EAGAIN;// return to the caller   
+      } else {
+          goto read_low;
+      }
+     }       
   } else { //blocking operation
       if (the_object->prio == 0) { //high priority stream  
-        printk("process %d(%s) is going to sleep in high prio wait queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
-        wait_event_timeout(the_object->hi_queue, 0, the_object->TIMEOUT);
-        mutex_lock(&the_object->mutex); 
-        if(*off > the_object->hi_valid_bytes) {
-            	mutex_unlock(&(the_object->mutex));
+        PDEBUG("process %d(%s) is going to sleep in high prio wait queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
+        if(!wait_event_timeout(the_object->hi_queue, 0, the_object->TIMEOUT)) {
+          PINFO("%s - command timed out.", __func__);
+          return  -ETIMEDOUT;
+        }
+        if(mutex_lock_interruptible(&the_object->mutex_hi)) {
+          return -ERESTARTSYS;
+        } else {
+          goto read_hi;
+        }
+       
+      }
+      else { //low priority stream
+        printk("process %d(%s) is going to sleep to low prio queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
+        if(!wait_event_timeout(the_object->low_queue, 0, the_object->TIMEOUT)) {
+          PINFO("%s - command timed out.", __func__);
+          return  -ETIMEDOUT;
+        }        
+        if(mutex_lock_interruptible(&the_object->mutex_low)) {
+          return ERESTARTSYS;
+        } else {
+              goto read_low;
+        }
+       }
+      }
+  read_hi : 
+    if(*off > the_object->hi_valid_bytes) {
+            	mutex_unlock(&(the_object->mutex_hi));
 	            return 0;
         } 
         if((the_object->hi_valid_bytes - *off) < len) len = the_object->hi_valid_bytes - *off; {
-         printk("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
-         printk("%s: somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+         PDEBUG("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
+         PINFO("%s: somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
          ret = copy_to_user(buff,&(the_object->hi_prio_stream[*off]),len);
          off += (len - ret);
          the_object->hi_prio_stream+=len;
          the_object->hi_valid_bytes-=len;
-         printk("after read HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
-         mutex_unlock(&(the_object->mutex)); 
+         PDEBUG("after read HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
+         mutex_unlock(&(the_object->mutex_hi)); 
+         return len - ret;
          }
-      }
-      else { //low priority stream
-        printk("process %d(%s) is going to sleep to low prio queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
-        wait_event_timeout(the_object->low_queue, 0, the_object->TIMEOUT);
-        mutex_lock(&the_object->mutex);
-        if(*off > the_object->low_valid_bytes) {
-            	 mutex_unlock(&(the_object->mutex));
+  read_low: 
+      if(*off > the_object->low_valid_bytes) {
+            	 mutex_unlock(&(the_object->mutex_low));
 	             return 0;
         } 
         if((the_object->low_valid_bytes - *off) < len) len = the_object->low_valid_bytes - *off; {
-         printk("current LOW LEVEL STREAM : %s \n", the_object->low_prio_stream);
-         printk("%s: somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
+         PDEBUG("current LOW LEVEL STREAM : %s \n", the_object->low_prio_stream);
+         PINFO("%s: somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",MODNAME,get_major(filp),get_minor(filp));
          ret = copy_to_user(buff,&(the_object->low_prio_stream[*off]),len);
          off += (len - ret);
          the_object->low_prio_stream+=len;
          the_object->low_valid_bytes-=len;
-        printk("after read LOW LEVEL STREAM : %s \n", the_object->low_prio_stream);
-         mutex_unlock(&(the_object->mutex)); 
+         PDEBUG("after read LOW LEVEL STREAM : %s \n", the_object->low_prio_stream);
+         mutex_unlock(&(the_object->mutex_low)); 
+         return len - ret;
        }
-      }
   }
-  return 0;
-}
+
 
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg) {
 
@@ -264,7 +315,7 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
       timer = the_object->TIMEOUT;
     	the_object->TIMEOUT= arg; //milliseconds
       the_object->jiffies=msecs_to_jiffies(the_object->TIMEOUT);
-      printk("Set timeout milliseconds: %d // Set timeout jiffies %ld\n", the_object->TIMEOUT, the_object->jiffies);
+      PINFO("Set timeout milliseconds: %d // Set timeout jiffies %ld\n", the_object->TIMEOUT, the_object->jiffies);
 		default:
 			return -ENOTTY;
 	}
@@ -299,9 +350,12 @@ int i;
 		objects[i].low_prio_stream = NULL;
 		objects[i].hi_prio_stream = (char*)__get_free_page(GFP_KERNEL);
 		objects[i].low_prio_stream = (char*)__get_free_page(GFP_KERNEL);
-   	mutex_init(&(objects[i].mutex));
+   	mutex_init(&(objects[i].mutex_low));
+    mutex_init(&(objects[i].mutex_hi));
     init_waitqueue_head(&(objects[i].hi_queue));
     init_waitqueue_head(&(objects[i].low_queue));
+    objects[i].multiflowdriver_wq = create_singlethread_workqueue(MULTIFLOWDRIVER_WORKQUEUE);
+		INIT_WORK(&objects[i].multiflowdriver_work , deferred_work);
 		if(objects[i].hi_prio_stream == NULL || objects[i].low_prio_stream ==NULL ) goto revert_allocation;
 	}
 
@@ -313,7 +367,7 @@ int i;
 	  return Major;
 	}
 
-	printk(KERN_INFO "%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
+	PINFO("%s: new device registered, it is assigned major number %d\n",MODNAME, Major);
 
 	return 0;
 
@@ -325,8 +379,6 @@ int i;
 	return -ENOMEM;
 
 
-
-
 }
 
 void cleanup_module(void) {
@@ -335,12 +387,21 @@ void cleanup_module(void) {
 	for(i=0;i<MINORS;i++){
 		free_page((unsigned long)objects[i].low_prio_stream);
 		free_page((unsigned long)objects[i].hi_prio_stream);
+    destroy_workqueue(objects[i].multiflowdriver_wq);
 	}
 
 	unregister_chrdev(Major, DEVICE_NAME);
 
-	printk(KERN_INFO "%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
+	PINFO("%s: new device unregistered, it was assigned major number %d\n",MODNAME, Major);
 
 	return;
 
 }
+
+
+
+//module_param(enabled, int, S_IRUGO);
+
+//module_param(nthreads, int, S_IRUGO);
+
+//module_param(nbytes, int, S_IRUGO);

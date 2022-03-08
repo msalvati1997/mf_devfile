@@ -81,7 +81,7 @@ void * the_thread_write_low(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
+	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
 	printf("Writing on low priority stream...\n");
 	write(fd,DATA_LOW,SIZE_LOW);
 	
@@ -141,7 +141,9 @@ int main(int argc, char** argv){
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+//	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
     //pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));
