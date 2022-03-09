@@ -209,15 +209,13 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   write_low :
     PDEBUG("before setting operation_data \n");
     (the_object->data_op).buff=buff;
-    PDEBUG("buffer set");
+    PDEBUG("buffer set %s", (the_object->data_op).buff);
     (the_object->data_op).len=len;
-    PDEBUG("len set");
+    PDEBUG("len set %d", (the_object->data_op).len);
     (the_object->data_op).filp=filp;
-    PDEBUG("filp setting");
+    PDEBUG("filp setting %d",  (the_object->data_op).filp);
     (the_object->data_op).off=*off;
-    PDEBUG("off setup\n");
-    PDEBUG("before queue work : trying to write %s\n", (the_object->data_op).buff);
-
+    PDEBUG("off setup %d",*(the_object->data_op).off);
     queue_work(the_object->multiflowdriver_wq,&the_object->multiflowdriver_work);	
     return 0;
 }
