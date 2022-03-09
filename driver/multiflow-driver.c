@@ -42,7 +42,7 @@ static int Major;            /* Major number assigned to broadcast device driver
 
 struct __operation_data {
         struct file *filp;
-        char *buff;
+        char *bff;
         size_t len; 
         loff_t *off;
 };
@@ -63,7 +63,7 @@ typedef struct _object_state{
 	int low_valid_bytes;
 	char * hi_prio_stream; //the I/O node is a buffer in memory
 	char * low_prio_stream; //the I/O node is a buffer in memory
-  operation_data_t data_op;
+  operation_data_t *data_op;
 
 } object_state;
 
@@ -76,10 +76,9 @@ object_state objects[MINORS];
 
 static void deferred_work(struct work_struct *work) {
    object_state *the_object;
-   printk("before container of\n");
    the_object = container_of(work, object_state,  multiflowdriver_work);
-   printk("after container of\n");
-   PINFO("multiflowdriver_work executing of deferring write of data : %s\n", the_object->data_op.buff);
+   //PINFO("multiflowdriver_work executing of deferring write of data : %s\n", the_object->data_op->bff);
+   PINFO("offset : %s",*(the_object->data_op)->off);
      if (the_object->op==0) { 
         if(mutex_trylock(&the_object->mutex_low)) { //non blocking 
            PERR("non blocking operation : can't do the operation\n");;
@@ -89,25 +88,24 @@ static void deferred_work(struct work_struct *work) {
            PERR("mutex problem\n");
       }
      }
-   if(*(the_object->data_op).off >= OBJECT_MAX_SIZE) {//offset too large
+   if(*(the_object->data_op)->off >= OBJECT_MAX_SIZE) {//offset too large
           mutex_unlock(&the_object->mutex_low);
 	        PERR("offset too large\n");
         }
-   if(*(the_object->data_op).off > the_object->low_valid_bytes) {//offset bwyond the current stream size
+   if(*(the_object->data_op)->off > the_object->low_valid_bytes) {//offset bwyond the current stream size
          mutex_unlock(&the_object->mutex_low);
  	       PERR("out of stream resources\n");
        }  
-   if((OBJECT_MAX_SIZE - *((the_object->data_op).off)) < ((the_object->data_op).len)) ((the_object->data_op).len) = OBJECT_MAX_SIZE - *((the_object->data_op).off); {
+   if((OBJECT_MAX_SIZE - *((the_object->data_op)->off)) < ((the_object->data_op)->len)) ((the_object->data_op)->len) = OBJECT_MAX_SIZE - *((the_object->data_op)->off); {
         PDEBUG("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
-        PINFO("somebody called a low-prio deferred - write on dev with [major,minor] number [%d,%d]\n",get_major((the_object->data_op).filp),get_minor((the_object->data_op).filp));
-        *(the_object->data_op).off  += the_object->low_valid_bytes;
-        int ret = copy_from_user(&(the_object->low_prio_stream[*(the_object->data_op).off ]),(the_object->data_op).buff ,(the_object->data_op).len);
-        *(the_object->data_op).off  += ((the_object->data_op).len - ret);
-        the_object->low_valid_bytes =  *(the_object->data_op).off ;
+        PINFO("somebody called a low-prio deferred - write on dev with [major,minor] number [%d,%d]\n",get_major((the_object->data_op)->filp),get_minor((the_object->data_op)->filp));
+        *(the_object->data_op)->off  += the_object->low_valid_bytes;
+        int ret = copy_from_user(&(the_object->low_prio_stream[*(the_object->data_op)->off ]),(the_object->data_op)->bff ,(the_object->data_op)->len);
+        *(the_object->data_op)->off  += ((the_object->data_op)->len - ret);
+        the_object->low_valid_bytes =  *(the_object->data_op)->off ;
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
         mutex_unlock(&(the_object->mutex_low));
       } 
-
  }
  
 
@@ -207,15 +205,10 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
          }
          return len-ret;
   write_low :
-    PDEBUG("before setting operation_data \n");
-    (the_object->data_op).buff=buff;
-    PDEBUG("buffer set %s", (the_object->data_op).buff);
-    (the_object->data_op).len=len;
-    PDEBUG("len set %d", (the_object->data_op).len);
-    (the_object->data_op).filp=filp;
-    PDEBUG("filp setting %d",  (the_object->data_op).filp);
-    (the_object->data_op).off=*off;
-    PDEBUG("off setup %d",*(the_object->data_op).off);
+    (the_object->data_op)->bff=(char*) buff;
+    (the_object->data_op)->len=len;
+    (the_object->data_op)->filp=filp;
+    (the_object->data_op)->off=off;
     queue_work(the_object->multiflowdriver_wq,&the_object->multiflowdriver_work);	
     return 0;
 }
@@ -375,10 +368,14 @@ int i;
     init_waitqueue_head(&(objects[i].hi_queue));
     init_waitqueue_head(&(objects[i].low_queue));
     operation_data_t *data= kzalloc(sizeof(operation_data_t),GFP_ATOMIC);
-    data->buff=kzalloc(sizeof(char)*4096,GFP_ATOMIC);
+    data->bff=NULL;
+    data->off=NULL;
+    data->filp=NULL;
+    data->len=0;
+    data->bff=kzalloc(sizeof(char)*4096,GFP_ATOMIC);
     data->off=kzalloc(sizeof(loff_t),GFP_ATOMIC);
     data->filp=kzalloc(sizeof(struct file),GFP_ATOMIC);
-    objects[i].data_op=*data;
+    objects[i].data_op=data;
     objects[i].multiflowdriver_wq = create_singlethread_workqueue(MULTIFLOWDRIVER_WORKQUEUE);
 		INIT_WORK(&objects[i].multiflowdriver_work , deferred_work);
 		if(objects[i].hi_prio_stream == NULL || objects[i].low_prio_stream ==NULL ) goto revert_allocation;
@@ -426,3 +423,4 @@ module_exit(multiflowdriver_exit);
 //module_param(nthreads, int, S_IRUGO);
 
 //module_param(nbytes, int, S_IRUGO);
+
