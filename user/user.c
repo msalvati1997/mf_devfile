@@ -117,7 +117,6 @@ void * the_thread_write_low(void* path){
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
 	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
-	printf("Writing on low priority stream...\n");
 	char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*4);
 	buff = strcat(data," ");
@@ -180,8 +179,8 @@ int main(int argc, char** argv){
 	sprintf(buff,"%s%d",path,i);
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
+	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 //	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
     //pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));

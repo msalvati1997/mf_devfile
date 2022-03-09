@@ -76,7 +76,9 @@ object_state objects[MINORS];
 
 static void deferred_work(struct work_struct *work) {
    object_state *the_object;
+   printk("before container of\n");
    the_object = container_of(work, object_state,  multiflowdriver_work);
+   printk("after container of\n");
    PINFO("multiflowdriver_work executing of deferring write of data : %s\n", the_object->data_op.buff);
      if (the_object->op==0) { 
         if(mutex_trylock(&the_object->mutex_low)) { //non blocking 
@@ -205,8 +207,13 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
          }
          return len-ret;
   write_low :
-    operation_data_t data = { .buff = buff, .filp = filp, .off = off, .len = len};
-    the_object->data_op=data;
+    PDEBUG("before setting operation_data \n");
+    (the_object->data_op).buff=buff;
+    (the_object->data_op).len=len;
+    (the_object->data_op).filp=filp;
+    (the_object->data_op).off=off;
+    PDEBUG("before queue work : trying to write %s\n", (the_object->data_op).buff);
+
     queue_work(the_object->multiflowdriver_wq,&the_object->multiflowdriver_work);	
     return 0;
 }
@@ -365,6 +372,8 @@ int i;
     mutex_init(&(objects[i].mutex_hi));
     init_waitqueue_head(&(objects[i].hi_queue));
     init_waitqueue_head(&(objects[i].low_queue));
+    operation_data_t *data= kzalloc(sizeof(operation_data_t),GFP_ATOMIC);
+    objects[i].data_op=*data;
     objects[i].multiflowdriver_wq = create_singlethread_workqueue(MULTIFLOWDRIVER_WORKQUEUE);
 		INIT_WORK(&objects[i].multiflowdriver_work , deferred_work);
 		if(objects[i].hi_prio_stream == NULL || objects[i].low_prio_stream ==NULL ) goto revert_allocation;
