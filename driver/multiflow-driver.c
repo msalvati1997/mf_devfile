@@ -42,7 +42,7 @@ static int Major;            /* Major number assigned to broadcast device driver
 
 struct __operation_data {
         struct file *filp;
-        const char *buff;
+        char *buff;
         size_t len; 
         loff_t *off;
 };
