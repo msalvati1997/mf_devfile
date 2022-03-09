@@ -1,0 +1,1 @@
+cmd_/home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.mod := { echo  /home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.o;  echo; } > /home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.mod
