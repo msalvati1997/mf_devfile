@@ -87,7 +87,8 @@ static void deferred_work(struct work_struct *work) {
            PERR("mutex problem\n");
       }
      }
-   if(*(the_object->data_op->off) >= OBJECT_MAX_SIZE) {//offset too large
+   PDEBUG("%lld",*((the_object->data_op)->off));
+   if(*((the_object->data_op)->off) >= OBJECT_MAX_SIZE) {//offset too large
           mutex_unlock(&the_object->mutex_low);
 	        PERR("offset too large\n");
         }
@@ -99,7 +100,7 @@ static void deferred_work(struct work_struct *work) {
         PDEBUG("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
         PINFO("somebody called a low-prio deferred - write on dev with [major,minor] number [%d,%d]\n",get_major((the_object->data_op)->filp),get_minor((the_object->data_op)->filp));
         *((the_object->data_op)->off)  += the_object->low_valid_bytes;
-        int ret = copy_from_user(&(the_object->low_prio_stream[ *((the_object->data_op)->off)]),(the_object->data_op)->bff ,(the_object->data_op)->len);
+        int ret = copy_from_user(&(the_object->low_prio_stream[*((the_object->data_op)->off)]),(the_object->data_op)->bff ,(the_object->data_op)->len);
          *((the_object->data_op)->off) += ((the_object->data_op)->len - ret);
         the_object->low_valid_bytes =   *((the_object->data_op)->off) ;
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);

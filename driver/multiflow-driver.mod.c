@@ -43,18 +43,18 @@ __used __section("__versions") = {
 	{ 0x8c26d495, "prepare_to_wait_event" },
 	{ 0xfe487975, "init_wait_entry" },
 	{ 0x800473f, "__cond_resched" },
+	{ 0x13c49cc2, "_copy_from_user" },
+	{ 0x88db9f48, "__check_object_size" },
 	{ 0xc959d152, "__stack_chk_fail" },
 	{ 0x37110088, "remove_wait_queue" },
+	{ 0xb5136dc7, "mutex_lock_interruptible" },
 	{ 0x8ddd8aad, "schedule_timeout" },
 	{ 0x4afb2238, "add_wait_queue" },
+	{ 0x409bcb62, "mutex_unlock" },
+	{ 0xf21017d9, "mutex_trylock" },
 	{ 0xc5b6f236, "queue_work_on" },
 	{ 0xaad8c7d6, "default_wake_function" },
 	{ 0xf0ca6d41, "current_task" },
-	{ 0x13c49cc2, "_copy_from_user" },
-	{ 0x88db9f48, "__check_object_size" },
-	{ 0xb5136dc7, "mutex_lock_interruptible" },
-	{ 0x409bcb62, "mutex_unlock" },
-	{ 0xf21017d9, "mutex_trylock" },
 	{ 0x56470118, "__warn_printk" },
 	{ 0x7f02188f, "__msecs_to_jiffies" },
 	{ 0xc5850110, "printk" },
@@ -64,4 +64,4 @@ __used __section("__versions") = {
 MODULE_INFO(depends, "");
 
 
-MODULE_INFO(srcversion, "20CB4E14D74DAD7ACD21BC5");
+MODULE_INFO(srcversion, "462A77F749E00A95C8B01BD");
