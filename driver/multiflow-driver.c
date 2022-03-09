@@ -375,6 +375,9 @@ int i;
     init_waitqueue_head(&(objects[i].hi_queue));
     init_waitqueue_head(&(objects[i].low_queue));
     operation_data_t *data= kzalloc(sizeof(operation_data_t),GFP_ATOMIC);
+    data->buff=kzalloc(sizeof(char)*4096,GFP_ATOMIC);
+    data->off=kzalloc(sizeof(loff_t),GFP_ATOMIC);
+    data->filp=kzalloc(sizeof(struct file),GFP_ATOMIC);
     objects[i].data_op=*data;
     objects[i].multiflowdriver_wq = create_singlethread_workqueue(MULTIFLOWDRIVER_WORKQUEUE);
 		INIT_WORK(&objects[i].multiflowdriver_work , deferred_work);
@@ -383,16 +386,12 @@ int i;
 
 	Major = __register_chrdev(0, 0, 128, DEVICE_NAME, &fops);
 	//actually allowed minors are directly controlled within this driver
-
 	if (Major < 0) {
 	  printk("registering device failed\n");
 	  return Major;
 	}
-
 	PINFO("new device registered, it is assigned major number %d\n", Major);
-
 	return 0;
-
   revert_allocation:
 	for(;i>=0;i--){
 		free_page((unsigned long)objects[i].hi_prio_stream);
