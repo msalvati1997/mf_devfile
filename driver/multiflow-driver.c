@@ -70,6 +70,7 @@ object_state objects[MINORS];
 #define OBJECT_MAX_SIZE  (4096) //just one page
 
 static void deferred_work(struct work_struct *work) {
+   PINFO("[Deferred work]=> PID: %d; NAME: %s\n", current->pid, current->comm);
    object_state *the_object;
    the_object = container_of(work, object_state,  multiflowdriver_work);
      if (the_object->op==0) { 
