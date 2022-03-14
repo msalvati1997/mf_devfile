@@ -71,7 +71,7 @@ void * the_thread_write_hi(void* path){
 	buff = strcat(data,DATA_HI);
     printf("Writing on high priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
-		return NULL;
+	return NULL;
 }
 void * the_thread_read_hi(void* path){
 
@@ -161,7 +161,7 @@ int main(int argc, char** argv){
      int minors;
      char *path;
 	 int timer;
-     pthread_t tid;
+     pthread_t tid1,tid2;
 
      if(argc<4){
 	printf("useg: prog pathname major minors\n");
@@ -181,8 +181,11 @@ int main(int argc, char** argv){
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_hi,strdup(buff));
-	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
-//	pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
+	pthread_create(&tid1,NULL,the_thread_write_low,strdup(buff));
+	//pthread_create(&tid2,NULL,the_thread_write_low,strdup(buff));
+	//pthread_join(tid1,NULL);
+	//pthread_join(tid2,NULL);
+	//pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
     //pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_write_low,strdup(buff));
 	//pthread_create(&tid,NULL,the_thread_read_low,strdup(buff));

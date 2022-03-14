@@ -21,15 +21,11 @@ static int dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
 
-
 static void deferred_work(struct work_struct *work);
 
 static int enabled;
-
 static int nthreads;
-
 static int nbytes;
-
 static int Major;            /* Major number assigned to broadcast device driver */
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
@@ -42,9 +38,9 @@ static int Major;            /* Major number assigned to broadcast device driver
 
 struct __operation_data {
         struct file *filp;
-        char *bff;
+        char * bff;
         size_t len; 
-        loff_t *off;
+        long long int off;   
 };
 typedef struct __operation_data operation_data_t;
 
@@ -64,7 +60,6 @@ typedef struct _object_state{
 	char * hi_prio_stream; //the I/O node is a buffer in memory
 	char * low_prio_stream; //the I/O node is a buffer in memory
   operation_data_t *data_op;
-
 } object_state;
 
 
@@ -77,7 +72,6 @@ object_state objects[MINORS];
 static void deferred_work(struct work_struct *work) {
    object_state *the_object;
    the_object = container_of(work, object_state,  multiflowdriver_work);
-   //PINFO("multiflowdriver_work executing of deferring write of data : %s\n", the_object->data_op->bff);
      if (the_object->op==0) { 
         if(mutex_trylock(&the_object->mutex_low)) { //non blocking 
            PERR("non blocking operation : can't do the operation\n");;
@@ -87,22 +81,22 @@ static void deferred_work(struct work_struct *work) {
            PERR("mutex problem\n");
       }
      }
-   PDEBUG("%lld",*((the_object->data_op)->off));
-   if(*((the_object->data_op)->off) >= OBJECT_MAX_SIZE) {//offset too large
+   if(((the_object->data_op)->off) >= OBJECT_MAX_SIZE) {//offset too large
           mutex_unlock(&the_object->mutex_low);
 	        PERR("offset too large\n");
         }
-   if(*((the_object->data_op)->off) > the_object->low_valid_bytes) {//offset bwyond the current stream size
+   if(((the_object->data_op)->off) > the_object->low_valid_bytes) {//offset bwyond the current stream size
          mutex_unlock(&the_object->mutex_low);
  	       PERR("out of stream resources\n");
        }  
-   if((OBJECT_MAX_SIZE - *((the_object->data_op)->off)) < ((the_object->data_op)->len)) ((the_object->data_op)->len) = OBJECT_MAX_SIZE - *((the_object->data_op)->off); {
+   if((OBJECT_MAX_SIZE - ((the_object->data_op)->off)) < ((the_object->data_op)->len)) ((the_object->data_op)->len) = OBJECT_MAX_SIZE - ((the_object->data_op)->off); {
         PDEBUG("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
+        PDEBUG("offset %lld, len %d , buff %s\n",((the_object->data_op)->off), (the_object->data_op)->len, (the_object->data_op)->bff);
         PINFO("somebody called a low-prio deferred - write on dev with [major,minor] number [%d,%d]\n",get_major((the_object->data_op)->filp),get_minor((the_object->data_op)->filp));
-        *((the_object->data_op)->off)  += the_object->low_valid_bytes;
-        int ret = copy_from_user(&(the_object->low_prio_stream[*((the_object->data_op)->off)]),(the_object->data_op)->bff ,(the_object->data_op)->len);
-         *((the_object->data_op)->off) += ((the_object->data_op)->len - ret);
-        the_object->low_valid_bytes =   *((the_object->data_op)->off) ;
+        ((the_object->data_op)->off)  += the_object->low_valid_bytes;
+        int ret = strncat(&(the_object->low_prio_stream[((the_object->data_op)->off)]),((the_object->data_op)->bff) ,((the_object->data_op)->len));
+         ((the_object->data_op)->off) += ((the_object->data_op)->len - ret);
+        the_object->low_valid_bytes =  ((the_object->data_op)->off) ;
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
         mutex_unlock(&(the_object->mutex_low));
       } 
@@ -156,9 +150,12 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
          goto write_hi;
       }
    } else {
-       goto write_low; //async op 
-     }
-  }  else { //blocking operation
+      if(mutex_trylock(&the_object->mutex_hi)) {
+         return -EAGAIN;
+      } else {
+         goto write_low;
+     } }
+     } else { //blocking operation
       if (the_object->prio == 0) { //high priority stream 
         add_wait_queue(&the_object->hi_queue, &waita);	     	 
         if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
@@ -205,11 +202,15 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
          }
          return len-ret;
   write_low :
-    (the_object->data_op)->bff=(char*) buff;
-    (the_object->data_op)->len=len;
+    operation_data_t *data= kzalloc(sizeof(operation_data_t),GFP_ATOMIC);
+    the_object->data_op=data;
+    (the_object->data_op)->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
+    ret = copy_from_user((the_object->data_op)->bff, buff, len);
+    (the_object->data_op)->off=*off;
     (the_object->data_op)->filp=filp;
-    (the_object->data_op)->off=off;
-    queue_work(the_object->multiflowdriver_wq,&the_object->multiflowdriver_work);	
+    (the_object->data_op)->len=len;
+    INIT_WORK(&the_object->multiflowdriver_work, deferred_work);
+    queue_work(the_object->multiflowdriver_wq,&(the_object->multiflowdriver_work));	
     return 0;
 }
 
@@ -237,24 +238,21 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
      }       
   } else { //blocking operation
       if (the_object->prio == 0) { //high priority stream  
-        PDEBUG("process %d(%s) is going to sleep in high prio wait queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
-        if(!wait_event_timeout(the_object->hi_queue, 0, the_object->TIMEOUT)) {
-          PINFO("%s - command timed out.", __func__);
-          return  -ETIMEDOUT;
+        if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
+               PINFO("%s - command timed out.", __func__);
+               return ETIMEDOUT;
         }
         if(mutex_lock_interruptible(&the_object->mutex_hi)) {
           return -ERESTARTSYS;
         } else {
           goto read_hi;
         }
-       
       }
       else { //low priority stream
-        printk("process %d(%s) is going to sleep to low prio queue- TIMEOUT: %d \n",current->pid, current->comm, the_object->TIMEOUT); 
-        if(!wait_event_timeout(the_object->low_queue, 0, the_object->TIMEOUT)) {
-          PINFO("%s - command timed out.", __func__);
-          return  -ETIMEDOUT;
-        }        
+       if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
+               PINFO("%s - command timed out.", __func__);
+               return ETIMEDOUT;
+        }    
         if(mutex_lock_interruptible(&the_object->mutex_low)) {
           return ERESTARTSYS;
         } else {
@@ -310,7 +308,6 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
        the_object->op=DEFAULT_OP;
        the_object->TIMEOUT=DEFAULT_TIMER;
        break;
-
 		case IOCTL_HIGH_PRIO:
     	the_object->prio = 0;
 			break;
@@ -351,8 +348,7 @@ static struct file_operations fops = {
 
 
 
-static int __init multiflowdriver_init(void)
-{
+static int __init multiflowdriver_init(void) {
 int i;
 
 	//initialize the drive internal state
@@ -367,17 +363,7 @@ int i;
     mutex_init(&(objects[i].mutex_hi));
     init_waitqueue_head(&(objects[i].hi_queue));
     init_waitqueue_head(&(objects[i].low_queue));
-    operation_data_t *data= kzalloc(sizeof(operation_data_t),GFP_ATOMIC);
-    data->bff=NULL;
-    data->off=NULL;
-    data->filp=NULL;
-    data->len=0;
-    data->bff=kzalloc(sizeof(char)*4096,GFP_ATOMIC);
-    data->off=kzalloc(sizeof(loff_t),GFP_ATOMIC);
-    data->filp=kzalloc(sizeof(struct file),GFP_ATOMIC);
-    objects[i].data_op=data;
     objects[i].multiflowdriver_wq = create_singlethread_workqueue(MULTIFLOWDRIVER_WORKQUEUE);
-		INIT_WORK(&objects[i].multiflowdriver_work , deferred_work);
 		if(objects[i].hi_prio_stream == NULL || objects[i].low_prio_stream ==NULL ) goto revert_allocation;
 	}
 
