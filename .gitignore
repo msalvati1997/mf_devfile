@@ -3,6 +3,15 @@ driver/multiflow-driver.ko
 driver/multiflow-driver.mod.c
 driver/multiflow-driver.ko
 driver/multiflow-driver.o
-user/a.out
+test/a.out
 driver/.multiflow-driver.o.cmd
 .vscode/settings.json
+driver/.Module.symvers.cmd
+driver/.multiflow-driver.ko.cmd
+driver/.multiflow-driver.mod.o.cmd
+driver/.modules.order.cmd
+driver/.multiflow-driver.mod.cmd
+driver/Module.symvers
+driver/modules.order
+driver/multiflow-driver.mod
+driver/multiflow-driver.mod.o

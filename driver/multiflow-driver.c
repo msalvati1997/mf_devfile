@@ -83,7 +83,7 @@ static void deferred_work(struct work_struct *work) {
    the_object = objects + minor;
   if (the_object->op==0) { 
         if(mutex_trylock(&the_object->mutex_low)) { //non blocking 
-           PERR("non blocking operation : can't do the operation\n");;
+         PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
         } 
      }   else {
       if (mutex_lock_interruptible(&the_object->mutex_low)) { //blocking operation //sync
@@ -155,12 +155,14 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   if (the_object->op==0) { //non blocking operation 
    if (the_object->prio == 0) {
       if(mutex_trylock(&the_object->mutex_hi)) {
+         PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
          return -EAGAIN;
       } else {
          goto write_hi;
       }
    } else {
       if(mutex_trylock(&the_object->mutex_hi)) {
+         PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
          return -EAGAIN;
       } else {
          goto write_low;
@@ -219,7 +221,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
     data->off=*off;
     data->filp=filp;
     data->len=len;
-    INIT_WORK (&data->w, deferred_work); 
+    INIT_WORK(&data->w, deferred_work); 
     result = queue_work(the_object->wq, &data->w);
 		if (result == false)
 			PERR("%s:  failed to queue_work\n",__func__);
@@ -237,12 +239,14 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    if (the_object->op==0) { //non blocking operation 
      if(the_object->prio==0 ) {
            if(mutex_trylock(&the_object->mutex_hi)) { 
-          return -EAGAIN;// return to the caller   
+              PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
+              return -EAGAIN;// return to the caller   
       } else {
           goto read_hi;
       }
      } else {
          if(mutex_trylock(&the_object->mutex_low)) { 
+          PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
           return -EAGAIN;// return to the caller   
       } else {
           goto read_low;
