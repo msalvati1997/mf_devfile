@@ -409,7 +409,6 @@ static void __exit multiflowdriver_exit(void) {
 		free_page((unsigned long)objects[i].low_prio_stream);
 		free_page((unsigned long)objects[i].hi_prio_stream);
     destroy_workqueue(objects[i].wq);
-	  kfree(objects[i].wq);
 	}
   
 	

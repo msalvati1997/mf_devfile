@@ -5,3 +5,4 @@ driver/multiflow-driver.ko
 driver/multiflow-driver.o
 user/a.out
 driver/.multiflow-driver.o.cmd
+.vscode/settings.json
