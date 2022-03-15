@@ -11,6 +11,8 @@
 #include<linux/list.h>
 #include<linux/fs.h>
 #include<linux/string.h>
+#include <linux/kref.h>
+#include <linux/seq_file.h>
 #include<linux/init.h>
 #include<linux/ioctl.h>
 #include<linux/kdev_t.h>
