@@ -93,8 +93,8 @@ void * the_thread_read_hi(void* path){
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
 	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
-	char * buff = malloc(sizeof(char)*4);
-	read(fd,buff,sizeof(char)*4);
+	char * buff = malloc(sizeof(char)*8);
+	read(fd,buff,sizeof(char)*8);
 	printf("READER FROM HIGH READ %s \n",buff);
 	return NULL;
 }
@@ -149,8 +149,8 @@ void * the_thread_read_low(void* path){
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); // blocking operations 
 	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
-	char * buff = malloc(sizeof(char)*4);
-	read(fd,buff,sizeof(char)*4);
+	char * buff = malloc(sizeof(char)*8);
+	read(fd,buff,sizeof(char)*8);
 	printf("READED FROM LOW READ %s\n",buff);
 
 	return NULL;
@@ -192,7 +192,7 @@ char buff[4096];
         printf("\t\t%s\n", minors_list[i]);
     }
 	printf("\n\nThis is a testing program. Starting tests...\n");
-	printf("\n\tTest 1 - concurrent writes...\n");
+	printf("\n\tTest 1 - concurrent writes low...\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_low, strdup(minors_list[i]));
@@ -207,8 +207,62 @@ char buff[4096];
 		sleep(1);
 
 	}
+	printf("\n\tTest 1 complete \n");
+
+	printf("\n\tTest 2 - concurrent writes high...\n");
+	for(i=0;i<minors;i++)
+	{
+		pthread_create(&tid1, NULL, the_thread_write_hi, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_write_hi, strdup(minors_list[i]));
+		pthread_create(&tid3, NULL, the_thread_write_hi, strdup(minors_list[i]));
+		pthread_create(&tid4, NULL, the_thread_write_hi, strdup(minors_list[i]));
+		pthread_join(tid1,NULL);
+		pthread_join(tid2,NULL);
+		pthread_join(tid3,NULL);
+		pthread_join(tid4,NULL);
+	
+		sleep(1);
+
+	}
+	printf("\n\tTest 2 complete \n");
 	printf("\t\tdone.\n");
 
+
+	printf("\n\tTest 3 - concurrent read high...\n");
+	for(i=0;i<minors;i++)
+	{
+		pthread_create(&tid1, NULL, the_thread_read_hi, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_read_hi, strdup(minors_list[i]));
+		pthread_create(&tid3, NULL, the_thread_read_hi, strdup(minors_list[i]));
+		pthread_create(&tid4, NULL, the_thread_read_hi, strdup(minors_list[i]));
+		pthread_join(tid1,NULL);
+		pthread_join(tid2,NULL);
+		pthread_join(tid3,NULL);
+		pthread_join(tid4,NULL);
+	
+		sleep(1);
+
+	}
+	printf("\n\tTest 3 complete \n");
+	printf("\t\tdone.\n");
+
+	printf("\n\tTest 4 - concurrent read low...\n");
+	for(i=0;i<minors;i++)
+	{
+		pthread_create(&tid1, NULL, the_thread_read_low, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_read_low, strdup(minors_list[i]));
+		pthread_create(&tid3, NULL, the_thread_read_low, strdup(minors_list[i]));
+		pthread_create(&tid4, NULL, the_thread_read_low, strdup(minors_list[i]));
+		pthread_join(tid1,NULL);
+		pthread_join(tid2,NULL);
+		pthread_join(tid3,NULL);
+		pthread_join(tid4,NULL);
+	
+		sleep(1);
+
+	}
+	printf("\n\tTest 4 complete \n");
+	printf("\t\tdone.\n");
 
     return 0;
 }

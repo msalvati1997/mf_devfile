@@ -379,7 +379,6 @@ int i;
     char str[15];
     sprintf( str, "%s%d", "mfdev_wq_", i );
     objects[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);
-    PINFO("Workqueue : %s allocated\n",str);
 		if(objects[i].hi_prio_stream == NULL || objects[i].low_prio_stream ==NULL ) goto revert_allocation;
 	}
 
