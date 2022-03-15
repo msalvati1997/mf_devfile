@@ -1,1 +1,0 @@
-cmd_/home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.ko := ld -r -m elf_x86_64 --build-id=sha1  -T scripts/module.lds -o /home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.ko /home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.o /home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.mod.o;  true
