@@ -7,8 +7,8 @@
 #include <sys/ioctl.h>
 int i;
 char buff[4096];
-#define DATA_HI "high\n"
-#define DATA_LOW "low\n"
+#define DATA_HI "high"
+#define DATA_LOW "low"
 #define TYPE 'h'
 
 #define SIZE_HI strlen(DATA_HI)
@@ -66,9 +66,10 @@ void * the_thread_write_hi(void* path){
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
 	ioctl(fd,IOCTL_SETTIMER,1000); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
-	char* data = rand_string_alloc(sizeof(char)*4);
-	buff = strcat(data," ");
+	char* data = rand_string_alloc(sizeof(char)*5);
+	buff = strcat(data,"_");
 	buff = strcat(data,DATA_HI);
+	buff = strcat(data,"\n");
     printf("Writing on high priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
 	return NULL;
@@ -118,9 +119,10 @@ void * the_thread_write_low(void* path){
 	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
 	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
-	char* data = rand_string_alloc(sizeof(char)*4);
-	buff = strcat(data," ");
+	char* data = rand_string_alloc(sizeof(char)*5);
+	buff = strcat(data,"_");
 	buff = strcat(data,DATA_LOW);
+	buff = strcat(data,"\n");
 	printf("Writing on low priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
 	
@@ -174,6 +176,7 @@ char buff[4096];
         printf("ERROR - WRONG PARAMETERS: usage -> prog pathname major minors\n");
         return -1;
     }
+    printf("\n----------Multi-flow device driver tester initialization started correctly.\n\n");
     printf("\t...Creating %d minors for device %s (major %d)\n", minors, path, major);
     for (i = 0; i < minors; i++)
     {
@@ -183,10 +186,13 @@ char buff[4096];
         minors_list[i] = malloc(32);
         strcpy(minors_list[i], buff);
     }
+    printf("\tSystem initialized. Minors list:\n");
     for (i = 0; i < minors; i++)
     {
         printf("\t\t%s\n", minors_list[i]);
     }
+	printf("\n\nThis is a testing program. Starting tests...\n");
+	printf("\n\tTest 1 - concurrent writes...\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_low, strdup(minors_list[i]));

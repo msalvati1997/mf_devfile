@@ -103,10 +103,11 @@ static void deferred_work(struct work_struct *work) {
         PDEBUG("offset %lld, len %d , buff %s\n",(tw->off), tw->len, tw->bff);
         PINFO("somebody called a low-prio deferred - write on dev with [major,minor] number [%d,%d]\n",get_major(tw->filp),get_minor(tw->filp));
         (tw->off)  += the_object->low_valid_bytes;
-        int ret = strncat(&(the_object->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
-        (tw->off) += (tw->len - ret);
-        the_object->low_valid_bytes =  (tw->off) ;
+        strncat(&(the_object->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
+        tw->off +=tw->len;
+        the_object->low_valid_bytes = (tw->off); 
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
+        kfree(tw);
         mutex_unlock(&(the_object->mutex_low));
       } 
  }
