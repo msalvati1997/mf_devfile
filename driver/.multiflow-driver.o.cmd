@@ -875,6 +875,7 @@ deps_/home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.o := \
   include/linux/projid.h \
   include/uapi/linux/quota.h \
   include/linux/nfs_fs_i.h \
+  include/linux/seq_file.h \
   include/linux/module.h \
     $(wildcard include/config/MODULES_TREE_LOOKUP) \
     $(wildcard include/config/MODULE_SIG) \
@@ -928,7 +929,6 @@ deps_/home/martinasalvati97/Documents/mf_devfile/driver/multiflow-driver.o := \
   include/uapi/asm-generic/ioctls.h \
   include/linux/tty_driver.h \
     $(wildcard include/config/CONSOLE_POLL) \
-  include/linux/seq_file.h \
   include/linux/tty_ldisc.h \
   include/uapi/linux/tty_flags.h \
   include/uapi/linux/tty.h \
