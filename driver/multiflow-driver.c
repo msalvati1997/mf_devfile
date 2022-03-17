@@ -76,27 +76,31 @@ static void deferred_work(struct work_struct *work) {
    deferred_work_t *tw;
    tw = container_of(work, deferred_work_t, w);
    if (!tw) {
-		pr_err("%s: Null pointer!!\n", __func__);
-		return;
-	  }
+		PERR("%s: Null pointer!!\n", __func__);
+    return;
+ 	  }
    minor = get_minor(tw->filp);
    the_object = objects + minor;
   if (the_object->op==0) { 
         if(mutex_trylock(&the_object->mutex_low)) { //non blocking 
          PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
+         return;
         } 
      }   else {
       if (mutex_lock_interruptible(&the_object->mutex_low)) { //blocking operation //sync
            PERR("mutex problem\n");
+           return;
       }
      }
    if((tw->off) >= OBJECT_MAX_SIZE) {//offset too large
           mutex_unlock(&the_object->mutex_low);
 	        PERR("offset too large\n");
+          return;
         }
    if((tw->off) > the_object->low_valid_bytes) {//offset bwyond the current stream size
          mutex_unlock(&the_object->mutex_low);
  	       PERR("out of stream resources\n");
+         return;
        }  
    if((OBJECT_MAX_SIZE - (tw->off)) < (tw->len)) (tw->len) = OBJECT_MAX_SIZE - (tw->off); {
         PDEBUG("current LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
@@ -109,7 +113,9 @@ static void deferred_work(struct work_struct *work) {
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", the_object->low_prio_stream);
         kfree(tw);
         mutex_unlock(&(the_object->mutex_low));
-      } 
+         PINFO("[Deferred work]=> PID: %d; NAME: %s - FINISHED\n", current->pid, current->comm);
+      }
+   
  }
  
 
@@ -154,53 +160,17 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
 
   if (the_object->op==0) { //non blocking operation 
    if (the_object->prio == 0) {
-      if(mutex_trylock(&the_object->mutex_hi)) {
-         PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-         return -EAGAIN;
+      if(!mutex_trylock(&the_object->mutex_hi)) {
+         PERR("[Non-Blocking write high prio]=> PID: %d; NAME: %s - RESOURCE BUSY\n", current->pid, current->comm);
+         return -1;
       } else {
-         goto write_hi;
-      }
-   } else {
-      if(mutex_trylock(&the_object->mutex_hi)) {
-         PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-         return -EAGAIN;
-      } else {
-         goto write_low;
-     } }
-     } else { //blocking operation
-      if (the_object->prio == 0) { //high priority stream 
-        add_wait_queue(&the_object->hi_queue, &waita);	     	 
-        if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
-               PINFO("%s - command timed out.", __func__);
-               remove_wait_queue(&the_object->hi_queue, &waita);
-               return ETIMEDOUT;
-        }
-        if (mutex_lock_interruptible(&the_object->mutex_hi)) { //sync operation
-           return -ERESTARTSYS;
-        } else {
-            remove_wait_queue(&the_object->hi_queue, &waita);
-            goto write_hi;
-        }
-      } else { //low priority stream
-        if (schedule_timeout(the_object->jiffies) == 0) {  //if timeout expired - remove from wait queue
-                  PINFO("%s - command timed out.", __func__);
-                  ret = -ETIMEDOUT;
-                  return ret;
-        } else {
-           goto write_low;
-        }
-    }
-  }
-  return len - ret;
-
-  write_hi : 
-        if(*off >= OBJECT_MAX_SIZE) {//offset too large
-     	    mutex_unlock(&(the_object->mutex_hi));
-	        return -ENOSPC;//no space left on device
-         }
+          if(*off >= OBJECT_MAX_SIZE) {//offset too large
+     	      mutex_unlock(&(the_object->mutex_hi));
+	          return -ENOSPC;//no space left on device
+           }
          if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
-  	       mutex_unlock(&(the_object->mutex_hi));
- 	         return -ENOSR;//out of stream resources
+  	        mutex_unlock(&(the_object->mutex_hi));
+ 	          return -ENOSR;//out of stream resources
           }  
         if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PDEBUG("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
@@ -212,20 +182,79 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
            PDEBUG("after write HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
            mutex_unlock(&(the_object->mutex_hi)); 
          }
-         return len-ret;
-  write_low :
-    deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC);
-    bool result;
-    data->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
-    ret = copy_from_user(data->bff, buff, len);
-    data->off=*off;
-    data->filp=filp;
-    data->len=len;
-    INIT_WORK(&data->w, deferred_work); 
-    result = queue_work(the_object->wq, &data->w);
-		if (result == false)
-			PERR("%s:  failed to queue_work\n",__func__);
-    return 0;
+      }
+   } else {
+      if(!mutex_trylock(&the_object->mutex_low)) {
+         PERR("[Non-Blocking write low prio]=> PID: %d; NAME: %s - RESOURCE BUSY\n", current->pid, current->comm);
+         return -1;
+      } else {
+       deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC);
+       bool result;
+       data->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
+       ret = copy_from_user(data->bff, buff, len);
+       data->off=*off;
+       data->filp=filp;
+       data->len=len;
+       INIT_WORK(&data->w, deferred_work); 
+       result = queue_work(the_object->wq, &data->w);
+ 	  	 if (result == false)  {
+			  PERR("%s:  failed to queue_work\n",__func__);
+        return 0; 
+      }
+     } }
+  } else { //blocking operation
+      if (the_object->prio == 0) { //high priority stream 
+        add_wait_queue(&the_object->hi_queue, &waita);	     	 
+        if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
+               PINFO("%s - command timed out.", __func__);
+               remove_wait_queue(&the_object->hi_queue, &waita);
+               return -1;
+        }
+        if (mutex_lock_interruptible(&the_object->mutex_hi)) { //sync operation
+           remove_wait_queue(&the_object->hi_queue, &waita);
+           return -1;
+        } else {
+          remove_wait_queue(&the_object->hi_queue, &waita);
+          if(*off >= OBJECT_MAX_SIZE) {//offset too large
+     	      mutex_unlock(&(the_object->mutex_hi));
+	          return -ENOSPC;//no space left on device
+           }
+         if(*off > the_object->hi_valid_bytes) {//offset bwyond the current stream size
+  	        mutex_unlock(&(the_object->mutex_hi));
+ 	          return -ENOSR;//out of stream resources
+          }  
+        if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
+           PDEBUG("current HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
+           PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
+           *off += the_object->hi_valid_bytes;
+           ret = copy_from_user(&(the_object->hi_prio_stream[*off]),buff,len);
+           *off += (len - ret);
+           the_object->hi_valid_bytes = *off;
+           PDEBUG("after write HIGH LEVEL STREAM : %s \n", the_object->hi_prio_stream);
+           mutex_unlock(&(the_object->mutex_hi)); 
+         }
+        }
+      } else { //low priority stream
+      if (schedule_timeout(the_object->jiffies) == 0) {  //if timeout expired - remove from wait queue
+                  PINFO("%s - command timed out.", __func__);
+                  return -1;
+        } 
+       deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC);
+       bool result;
+       data->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
+       ret = copy_from_user(data->bff, buff, len);
+       data->off=*off;
+       data->filp=filp;
+       data->len=len;
+       INIT_WORK(&data->w, deferred_work); 
+       result = queue_work(the_object->wq, &data->w);
+ 	  	 if (result == false)  {
+			  PERR("%s:  failed to queue_work\n",__func__);
+        return -1; 
+      }
+      }
+  }
+  return len - ret;
 }
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
@@ -233,45 +262,51 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   int minor = get_minor(filp);
   int ret;
   object_state *the_object;
-
+  DECLARE_WAITQUEUE(waita, current);
   the_object = objects + minor;
 
    if (the_object->op==0) { //non blocking operation 
      if(the_object->prio==0 ) {
-           if(mutex_trylock(&the_object->mutex_hi)) { 
+           if(!mutex_trylock(&the_object->mutex_hi)) { 
               PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-              return -EAGAIN;// return to the caller   
+              return -1;// return to the caller   
       } else {
           goto read_hi;
       }
      } else {
-         if(mutex_trylock(&the_object->mutex_low)) { 
+         if(!mutex_trylock(&the_object->mutex_low)) { 
           PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-          return -EAGAIN;// return to the caller   
+          return -1;// return to the caller   
       } else {
           goto read_low;
       }
      }       
   } else { //blocking operation
       if (the_object->prio == 0) { //high priority stream  
+        add_wait_queue(&the_object->hi_queue, &waita);	     	 
         if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
                PINFO("%s - command timed out.", __func__);
-               return ETIMEDOUT;
+               remove_wait_queue(&the_object->hi_queue, &waita);
+               return -1;
         }
         if(mutex_lock_interruptible(&the_object->mutex_hi)) {
-          return -ERESTARTSYS;
+          return -1;
         } else {
+          remove_wait_queue(&the_object->hi_queue, &waita);
           goto read_hi;
         }
       }
       else { //low priority stream
+        add_wait_queue(&the_object->low_queue, &waita);	     	 
        if (schedule_timeout(the_object->jiffies) == 0) { // if timeout expired - remove from wait queue
                PINFO("%s - command timed out.", __func__);
-               return ETIMEDOUT;
+               remove_wait_queue(&the_object->low_queue, &waita);
+               return -1;
         }    
         if(mutex_lock_interruptible(&the_object->mutex_low)) {
-          return ERESTARTSYS;
+          return -1;
         } else {
+             remove_wait_queue(&the_object->low_queue, &waita);
               goto read_low;
         }
        }
@@ -412,6 +447,7 @@ static void __exit multiflowdriver_exit(void) {
 	for(i=0;i<MINORS;i++){
 		free_page((unsigned long)objects[i].low_prio_stream);
 		free_page((unsigned long)objects[i].hi_prio_stream);
+    flush_workqueue(objects[i].wq);
     destroy_workqueue(objects[i].wq);
 	}
   
@@ -426,9 +462,7 @@ static void __exit multiflowdriver_exit(void) {
 module_init(multiflowdriver_init);
 module_exit(multiflowdriver_exit);
 
-//module_param(enabled, int, S_IRUGO);
-
-//module_param(nthreads, int, S_IRUGO);
-
-//module_param(nbytes, int, S_IRUGO);
+module_param(enabled, int, S_IRUGO);
+module_param(nthreads, int, S_IRUGO);
+module_param(nbytes, int, S_IRUGO);
 
