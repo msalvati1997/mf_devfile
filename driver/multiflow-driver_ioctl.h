@@ -13,4 +13,4 @@
 
 #define DEFAULT_PRIO 1 // low prio
 #define DEFAULT_OP 0 // non blocking
-#define DEFAULT_TIMER 2 // 2 second
+#define DEFAULT_TIMEOUT 1000 // milliseconds

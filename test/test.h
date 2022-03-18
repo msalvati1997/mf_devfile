@@ -70,7 +70,7 @@ void * the_thread_write_hi_block(void* path){
 	buff = strcat(data,"_");
 	buff = strcat(data,DATA_HI);
 	buff = strcat(data,"\n");
-    printf("Writing on high priority stream...%s \n",buff);
+    printf("Writing on high priority stream... : %s \n",buff);
 	write(fd,buff,strlen(buff));
 	return NULL;
 }
@@ -95,7 +95,7 @@ void * the_thread_read_hi_block(void* path){
 	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	read(fd,buff,sizeof(char)*8);
-	printf("READER FROM HIGH READ %s \n",buff);
+	printf("Readed from high level stream %s \n",buff);
 	return NULL;
 }
 
@@ -123,7 +123,7 @@ void * the_thread_write_low_block(void* path){
 	buff = strcat(data,"_");
 	buff = strcat(data,DATA_LOW);
 	buff = strcat(data,"\n");
-	printf("Writing on low priority stream...%s \n",buff);
+	printf("Writing on low priority stream...: %s \n",buff);
 	write(fd,buff,strlen(buff));
 	
 	return NULL;
@@ -151,7 +151,7 @@ void * the_thread_read_low_block(void* path){
 	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	read(fd,buff,sizeof(char)*8);
-	printf("READED FROM LOW READ %s\n",buff);
+	printf("Readed from low level stream %s \n",buff);
 
 	return NULL;
 
@@ -206,7 +206,7 @@ void * the_thread_read_hi_nb(void* path){
 	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	read(fd,buff,sizeof(char)*8);
-	printf("READER FROM HIGH READ %s \n",buff);
+	printf("Readed from high level stream %s \n",buff);
 	return NULL;
 }
 
@@ -262,7 +262,7 @@ void * the_thread_read_low_nb(void* path){
 	ioctl(fd,IOCTL_SETTIMER,1500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	read(fd,buff,sizeof(char)*8);
-	printf("READED FROM LOW READ %s\n",buff);
+	printf("Readed from low level stream %s \n",buff);
 
 	return NULL;
 
