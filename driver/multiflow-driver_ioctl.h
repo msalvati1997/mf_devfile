@@ -11,6 +11,11 @@
 
 #define IOCTL_SETTIMER _IOWR(TYPE,5,int)  
 
+#define IOCTL_ENABLE _IO(TYPE,6)  
+#define IOCTL_DISABLE _IO(TYPE,7)  
+
+
 #define DEFAULT_PRIO 1 // low prio
 #define DEFAULT_OP 0 // non blocking
 #define DEFAULT_TIMEOUT 1000 // milliseconds
+#define DEFAULT_STATE 0 // default state - ENABLE

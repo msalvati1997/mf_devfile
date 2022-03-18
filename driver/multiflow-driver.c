@@ -12,67 +12,16 @@ Description		:		LINUX MULTI_FLOW DEVICE DRIVER PROJECT
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Martina Salvati");
-
-#define MULTIFLOWDRIVER_WORKQUEUE "multiflowdriver_workqueue"
+MODULE_DESCRIPTION("Multi-flow device file.");
 
 //driver operations
 static int dev_open(struct inode *, struct file *);
 static int dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
-
+//deferred work 
 static void deferred_work(struct work_struct *work);
 
-static int enabled;
-static int nthreads;
-static int nbytes;
-static int Major;            /* Major number assigned to broadcast device driver */
-
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(4, 0, 0)
-#define get_major(session)	MAJOR(session->f_inode->i_rdev)
-#define get_minor(session)	MINOR(session->f_inode->i_rdev)
-#else
-#define get_major(session)	MAJOR(session->f_dentry->d_inode->i_rdev)
-#define get_minor(session)	MINOR(session->f_dentry->d_inode->i_rdev)
-#endif
-
-
-struct __deferred_work_item {
-        struct file *filp;
-        char * bff;
-        size_t len; 
-        long long int off;   
-        struct work_struct	w;
-};
-typedef struct __deferred_work_item deferred_work_t;
-
-struct __session_data {
-  int prio;    //prio : 0 high prio - 1 low prio 
-  int op;      //type of operation :  0 non blocking operation - 1 blocking operation
-  int TIMEOUT; //timeout in millisecond
-  unsigned long jiffies; //timeout in jiffies (HZ)
-};
-typedef struct __session_data session_data_t;
-
-typedef struct _device{
-
-  struct mutex mutex_hi;
-  struct mutex mutex_low;
-	wait_queue_head_t hi_queue; //wait event queue for high pio requests
-	wait_queue_head_t low_queue;  //wait event queue for low prio requess
-	int hi_valid_bytes;
-  struct workqueue_struct *wq;
-	int low_valid_bytes;
-	char * hi_prio_stream; //the I/O node is a buffer in memory
-	char * low_prio_stream; //the I/O node is a buffer in memory
-} device;
-
-
-
-#define MINORS 128
-device devices[MINORS];
-
-#define OBJECT_MAX_SIZE  (4096) //just one page
 
 static void deferred_work(struct work_struct *work) {
    int minor;
@@ -89,7 +38,7 @@ static void deferred_work(struct work_struct *work) {
    session_data_t *session = (tw->filp)->private_data;
 
 
-  if (session->op==0) { //non blocking operation
+if (session->op==0) { //non blocking operation
         if(mutex_trylock(&dev->mutex_low)) { //non blocking 
          PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
          return;
@@ -97,11 +46,14 @@ static void deferred_work(struct work_struct *work) {
           goto deferred_write;
         } 
  } else { //blocking operation
+     __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
       if(!wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies)) {
            PINFO("%s - command timed out.", __func__);
+           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return;
         }
         else {
+          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
           goto deferred_write;
         }
      }
@@ -131,6 +83,7 @@ static void deferred_work(struct work_struct *work) {
         dev->low_valid_bytes = (tw->off); 
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
         PINFO("[Deferred work]=> PID: %d; NAME: %s - FINISHED\n", current->pid, current->comm);
+        low_bytes[minor] = dev->low_valid_bytes;
         kfree(tw);
         mutex_unlock(&(dev->mutex_low));
         wake_up(&(dev->low_queue));
@@ -144,24 +97,28 @@ static int dev_open(struct inode *inode, struct file *file) {
 
    int minor;
    minor = get_minor(file);
-   session_data_t *session = NULL;
-   session= kzalloc(sizeof(session_data_t),GFP_ATOMIC);
-   if (session == NULL){
-        PERR("Error allocating memory\n");
-        return -ENOMEM;
-    }
-   session->TIMEOUT=DEFAULT_TIMEOUT;
-   session->op=DEFAULT_OP;
-   session->prio=DEFAULT_PRIO;
-   session->jiffies=msecs_to_jiffies(DEFAULT_TIMEOUT);
-   file -> private_data = session;
    if(minor >= MINORS){
       PERR("Device open: internal error\n");
     	return -ENODEV;
    }
-
-   PINFO("device file successfully opened for object with minor %d\n",minor);
-   return 0;
+   if(devices_state[minor]==0) { 
+      session_data_t *session = NULL;
+      session= kzalloc(sizeof(session_data_t),GFP_ATOMIC);
+      if (session == NULL){
+         PERR("Error allocating memory\n");
+         return -ENOMEM;
+      }
+      session->TIMEOUT=DEFAULT_TIMEOUT;
+      session->op=DEFAULT_OP;
+      session->prio=DEFAULT_PRIO;
+      session->jiffies=msecs_to_jiffies(DEFAULT_TIMEOUT);
+      file -> private_data = session; 
+      PINFO("DEVICE FILE [MIN %d] OPENED :  NEW SESSION CREATED\n",minor);
+      return 0;
+   } else {
+      PERR("DEVICE FILE [MIN %d] DISABLED : CAN'T OPEN A NEW SESSION\n", minor);
+      return -1;
+   }
 }
 
 
@@ -203,10 +160,13 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
         } 
   } else { //blocking operation
       if (session->prio == 0) { //high priority stream 
+           __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
            PINFO("%s - command timed out.", __func__);
+           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return -1;
         } else {
+           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
           goto write_hi;
         }
       } else { //low priority stream
@@ -231,6 +191,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
            *off += (len - ret);
            dev->hi_valid_bytes = *off;
            PDEBUG("after write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
+           high_bytes[minor] = dev->hi_valid_bytes;
            mutex_unlock(&(dev->mutex_hi)); 
            wake_up(&(dev->hi_queue));
            return len-ret;
@@ -282,19 +243,25 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
      }       
   } else { //blocking operation
       if (session->prio == 0) { //high priority stream  
+        __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
            PINFO("%s - command timed out.", __func__);
+          __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return -1;
         }
         else {
+          __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
           goto read_hi;
         }
       }
       else { //low priority stream
+         __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
+          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
            PINFO("%s - command timed out.", __func__);
            return -1;
         } else {
+         __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
          goto read_low;
         }
        }
@@ -312,6 +279,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          dev->hi_prio_stream+=len;
          dev->hi_valid_bytes-=len;
          PDEBUG("after read HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
+         high_bytes[minor] = dev->hi_valid_bytes;
          mutex_unlock(&(dev->mutex_hi)); 
          wake_up(&(dev->hi_queue));
          return len - ret;
@@ -329,6 +297,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          dev->low_prio_stream+=len;
          dev->low_valid_bytes-=len;
          PDEBUG("after read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
+         low_bytes[minor] = dev->low_valid_bytes;
          mutex_unlock(&(dev->mutex_low)); 
          wake_up(&(dev->low_queue));
          return len - ret;
@@ -342,7 +311,6 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
   device *dev;
   dev = devices + minor;
   session_data_t *session = filp->private_data;
- 
   switch (command) {
 
     case IOCTL_RESET :
@@ -350,24 +318,38 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
       session->op=DEFAULT_OP;
       session->TIMEOUT=DEFAULT_TIMEOUT;
       session->jiffies=msecs_to_jiffies(DEFAULT_TIMEOUT);
+      PINFO("CALLED IOCTL_RESET ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
        break;
 		case IOCTL_HIGH_PRIO:
+      PINFO("CALLED IOCTL_HIGH_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
     	session->prio = 0;
 			break;
 		case IOCTL_LOW_PRIO:
+      PINFO("CALLED IOCTL_LOW_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
     	session->prio = 1;
 			break;
     case IOCTL_BLOCKING :
+      PINFO("CALLED IOCTL_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
       session->op = 1;
 			break;
     case IOCTL_NO_BLOCKING:
+      PINFO("CALLED IOCTL_NO_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
      	session->op = 0;
 			break;
     case IOCTL_SETTIMER :
     	session->TIMEOUT= arg; //milliseconds
       session->jiffies=msecs_to_jiffies(arg);
-      PINFO("Set timeout milliseconds: %d // Set timeout jiffies %ld\n", session->TIMEOUT, session->jiffies);
+      PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
+    case IOCTL_ENABLE:
+     	devices_state[minor]=0;
+      PINFO("CALLED IOCTL_ENABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+			break;  
+    case IOCTL_DISABLE:
+     	devices_state[minor]=1;
+      PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+			break;    
 		default:
+      PERR("UNKOWN IOCTL COMMAND\n");
 			return -ENOTTY;
 	}
 
@@ -449,10 +431,18 @@ static void __exit multiflowdriver_exit(void) {
 	return;
 
 }
+
 module_init(multiflowdriver_init);
 module_exit(multiflowdriver_exit);
 
-module_param(enabled, int, S_IRUGO);
-module_param(nthreads, int, S_IRUGO);
-module_param(nbytes, int, S_IRUGO);
+module_param_array(devices_state,int,NULL,S_IWUSR|S_IRUSR); //Devices state (0 = disabled - 1 = enabled)
+module_param_array(high_bytes,int,NULL,S_IRUGO);   //# valid bytes are present in every high priority flow
+module_param_array(low_bytes,int,NULL,S_IRUGO); //#valid bytes are present in every low priority flow
+module_param_array(high_waiting, int,NULL,S_IRUGO);   //#threads waiting on high priority stream for every device
+module_param_array(low_waiting, int,NULL,S_IRUGO); //#threads are waiting on low priority stream for every device
 
+MODULE_PARM_DESC(devices_state, "Array of devices states (0 = enabled - 1 = disabled)");
+MODULE_PARM_DESC(high_bytes, "Array reporting the number of current valid bytes in the high priority stream of every device.");
+MODULE_PARM_DESC(low_bytes, "Array reporting the number of current valid bytes in the low priority stream of every device.");
+MODULE_PARM_DESC(high_waiting, "Array describing the number of threads waiting on the high priority stream of every device.");
+MODULE_PARM_DESC(low_waiting, "Array describing the number of threads waiting on the low priority stream of every device.");
