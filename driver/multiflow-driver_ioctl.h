@@ -16,6 +16,6 @@
 
 
 #define DEFAULT_PRIO 1 // low prio
-#define DEFAULT_OP 0 // non blocking
-#define DEFAULT_TIMEOUT 1000 // milliseconds
+#define DEFAULT_OP 1 //  blocking
+#define DEFAULT_TIMEOUT 2500 // milliseconds
 #define DEFAULT_STATE 0 // default state - ENABLE

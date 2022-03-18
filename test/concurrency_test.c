@@ -64,9 +64,7 @@ char buff[4096];
 		pthread_join(tid2,NULL);
 		pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
-	
-		sleep(1);
-
+		sleep(2);
 	}
 	printf("\n\tTest 2 complete \n");
 	printf("\t\tdone.\n");
@@ -83,8 +81,7 @@ char buff[4096];
 		pthread_join(tid2,NULL);
 		pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
-	
-		sleep(1);
+		sleep(2);
 
 	}
 	printf("\n\tTest 3 complete \n");
@@ -101,11 +98,23 @@ char buff[4096];
 		pthread_join(tid2,NULL);
 		pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
-	
-		sleep(1);
+		sleep(2);
 
 	}
 	printf("\n\tTest 4 complete \n");
+
+	printf("\n\tTest 5 - concurrent  write and read..\n");
+	for(i=0;i<minors;i++)
+	{
+		pthread_create(&tid1, NULL, the_thread_write_and_read, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_write_and_read, strdup(minors_list[i]));
+	
+		pthread_join(tid1,NULL);
+		pthread_join(tid2,NULL);
+		sleep(2);
+
+	}
+	printf("\n\tTest 5 complete \n");
 	printf("\t\tdone.\n");
 
     return 0;

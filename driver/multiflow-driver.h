@@ -84,7 +84,7 @@ device devices[MINORS];
 #define OBJECT_MAX_SIZE  (4096) //just one page
 
 //param array
-int devices_state[MINORS];
+int devices_state[MINORS];  //initially : 0 (ALL ENABLED)
 int high_bytes[MINORS];
 int low_bytes[MINORS];
 int high_waiting[MINORS];
