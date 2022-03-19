@@ -1,7 +1,7 @@
 CC=gcc
 CFLAGS=-lpthread
 
-ALL:a1 a2 a3
+ALL:concurrency_test enable_disable_test timeout_test write_and_read_test
 
 concurrency_test:
 	$(CC) -o $@ concurrency_test.c $(CFLAGS)

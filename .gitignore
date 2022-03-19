@@ -18,3 +18,7 @@ driver/multiflow-driver.mod.o
 .vscode/configurationCache.log
 .vscode/dryrun.log
 .vscode/targets.log
+test/concurrency_test
+test/enable_disable_test
+test/write_and_read_test
+test/timeout_test
