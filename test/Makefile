@@ -16,7 +16,7 @@ write_and_read_test:
 	$(CC) -o $@ write_and_read_test.c $(CFLAGS)
 
 clean:
-	rm -rf *.o a1 a2 a3
+	rm -rf *.o concurrency_test enable_disable_test timeout_test write_and_read_test
 
 
 
