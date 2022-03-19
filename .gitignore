@@ -15,3 +15,6 @@ driver/Module.symvers
 driver/modules.order
 driver/multiflow-driver.mod
 driver/multiflow-driver.mod.o
+.vscode/configurationCache.log
+.vscode/dryrun.log
+.vscode/targets.log

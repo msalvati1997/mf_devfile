@@ -239,7 +239,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
           goto read_low;
       }
      }       
-  } else { //blocking operation
+  } else { //blocking operation 
       if (session->prio == 0) { //high priority stream  
         __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
@@ -276,7 +276,8 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          off += (len - ret);
          //dev->hi_prio_stream+=len;
          dev->hi_valid_bytes-=len;
-         memmove(dev->hi_prio_stream, dev->hi_prio_stream+=len,dev->hi_valid_bytes);
+         memmove(dev->hi_prio_stream, dev->hi_prio_stream+=len,dev->hi_valid_bytes); //consuming readed byte
+         memset(dev->hi_prio_stream + dev->hi_valid_bytes - len - ret,0,len-ret); //cleaning last byte
          PDEBUG("after read HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
          high_bytes[minor] = dev->hi_valid_bytes;
          mutex_unlock(&(dev->mutex_hi)); 
@@ -295,7 +296,8 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          off += (len - ret);
          // dev->low_prio_stream+=len;
          dev->low_valid_bytes-=len;
-         memmove(dev->low_prio_stream, dev->low_prio_stream+=len,dev->low_valid_bytes);
+         memmove(dev->low_prio_stream, dev->low_prio_stream+=len,dev->low_valid_bytes);  //consuming bytes
+         memset(dev->low_prio_stream + dev->low_valid_bytes - len - ret,0,len-ret); //cleaning last byte
          PDEBUG("after read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
          low_bytes[minor] = dev->low_valid_bytes;
          mutex_unlock(&(dev->mutex_low)); 
