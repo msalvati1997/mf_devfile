@@ -7,7 +7,7 @@ int action;
 int minors;
 unsigned long timeout;
 char **minors_list;
-pthread_t tid1, tid2, tid3, tid4;
+pthread_t tid1, tid2, tid3, tid4, tid5, tid6, tid7,tid8;
 char buff[4096];
 
 	int major = strtol(argv[2],NULL,10);
@@ -64,57 +64,42 @@ char buff[4096];
 		pthread_join(tid2,NULL);
 		pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
-		sleep(2);
+		sleep(1);
 	}
 	printf("\n\tTest 2 complete \n");
 	printf("\t\tdone.\n");
 
-
-	printf("\n\tTest 3 - concurrent read high...\n");
+	printf("\n\tTest 3 - concurrent read hi...\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_read_hi_block, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_read_hi_block, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_read_hi_nb, strdup(minors_list[i]));
 		pthread_create(&tid3, NULL, the_thread_read_hi_block, strdup(minors_list[i]));
 		pthread_create(&tid4, NULL, the_thread_read_hi_block,strdup(minors_list[i]));
 		pthread_join(tid1,NULL);
 		pthread_join(tid2,NULL);
 		pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
-		sleep(2);
+		sleep(1);
 
 	}
 	printf("\n\tTest 3 complete \n");
-	printf("\t\tdone.\n");
 
 	printf("\n\tTest 4 - concurrent read low...\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_read_low_block, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_read_low_block, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_read_low_nb, strdup(minors_list[i]));
 		pthread_create(&tid3, NULL, the_thread_read_low_block, strdup(minors_list[i]));
-		pthread_create(&tid4, NULL, the_thread_read_low_block, strdup(minors_list[i]));
+		pthread_create(&tid4, NULL, the_thread_read_low_block,strdup(minors_list[i]));
 		pthread_join(tid1,NULL);
 		pthread_join(tid2,NULL);
 		pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
-		sleep(2);
+		sleep(1);
 
 	}
 	printf("\n\tTest 4 complete \n");
-
-	printf("\n\tTest 5 - concurrent  write and read..\n");
-	for(i=0;i<minors;i++)
-	{
-		pthread_create(&tid1, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-	
-		pthread_join(tid1,NULL);
-		pthread_join(tid2,NULL);
-		sleep(2);
-
-	}
-	printf("\n\tTest 5 complete \n");
 	printf("\t\tdone.\n");
 
     return 0;

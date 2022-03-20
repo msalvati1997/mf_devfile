@@ -30,7 +30,7 @@
 
 
 #define DRIVER_NAME "multiflow-driver"
-#define DEVICE_NAME "mf-dev"  /* Device file name in /dev/ - not mandatory  */
+#define DEVICE_NAME "mfdev"  /* Device file name in /dev/ - not mandatory  */
 #define PDEBUG(fmt,args...) printk(KERN_DEBUG"%s:"fmt,DRIVER_NAME, ##args)
 #define PERR(fmt,args...) printk(KERN_ERR"%s:"fmt,DRIVER_NAME,##args)
 #define PINFO(fmt,args...) printk(KERN_INFO"%s:"fmt,DRIVER_NAME, ##args)

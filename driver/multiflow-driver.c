@@ -48,7 +48,7 @@ if (session->op==0) { //non blocking operation
  } else { //blocking operation
      __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
       if(!wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies)) {
-           PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
+           PINFO("%s - command timed out - \n", __func__);
            __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return;
         }
@@ -159,7 +159,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
       if (session->prio == 0) { //high priority stream 
            __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
-           PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
+           PINFO("%s - command timed out - \n", __func__);
            __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return -1;
         } else {
@@ -174,19 +174,25 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   write_hi:
         if(*off >= OBJECT_MAX_SIZE) {//offset too large
      	      mutex_unlock(&(dev->mutex_hi));
+            wake_up(&(dev->hi_queue));
+            PERR("No space left on device\n");
 	          return -ENOSPC;//no space left on device
            }
         if(*off > dev->hi_valid_bytes) {//offset bwyond the current stream size
   	        mutex_unlock(&(dev->mutex_hi));
+            wake_up(&(dev->hi_queue));
+            PERR("Out of stream resources \n");
  	          return -ENOSR;//out of stream resources
           }  
         if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
            PDEBUG("current HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
            *off += dev->hi_valid_bytes;
+           PINFO("Off %ld\n",*off);
            ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
+           PINFO("Ret %d - Len %ld\n", ret , len);
            *off += (len - ret);
-           dev->hi_valid_bytes = *off;
+           dev->hi_valid_bytes = *off;           
            PDEBUG("after write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
            high_bytes[minor] = dev->hi_valid_bytes;
            mutex_unlock(&(dev->mutex_hi)); 
@@ -215,11 +221,12 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
 }
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
-
+  *off=0;
   int minor = get_minor(filp);
   int ret;
   device *dev;
   dev = devices + minor;
+  int del_bytes;
   session_data_t *session = filp->private_data;
 
    if (session->op==0) { //non blocking operation 
@@ -228,6 +235,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
               PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
               return -1;// return to the caller   
       } else {
+          PINFO("LEN BEFORE MODIFIED %d\n", len);
           goto read_hi;
       }
      } else {
@@ -242,7 +250,8 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       if (session->prio == 0) { //high priority stream  
         __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
-           PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
+          wake_up(&(dev->hi_queue));
+           PINFO("%s - command timed out - \n", __func__);
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return -1;
         }
@@ -254,25 +263,28 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       else { //low priority stream
          __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
+           wake_up(&(dev->low_queue));
           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
-            PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
-           return -1;
+            PINFO("%s - command timed out - \n", __func__);
+            return -1;
         } else {
          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
          goto read_low;
         }
        }
       }
-  read_hi : 
-       if(*off > dev->hi_valid_bytes) {
-            	mutex_unlock(&(dev->mutex_hi));
-	            return 0;
+  read_hi :
+       if(len > dev->hi_valid_bytes) {
+              int m = len - (len-dev->hi_valid_bytes);
+              PINFO("Can read only %d bytes of %d bytes requested \n",m, len);
+              len=len - (len -dev->hi_valid_bytes);
         } 
-        if((dev->hi_valid_bytes - *off) < len) len = dev->hi_valid_bytes - *off; {
+         PINFO("valid bytes %d - requested to read %d\n", dev->hi_valid_bytes, len);
          PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
          PDEBUG("current HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
-         ret = copy_to_user(buff,&(dev->hi_prio_stream[*off]),len);
-         int del_bytes = len-ret;
+         ret = copy_to_user(buff,&(dev->hi_prio_stream[0]),len);
+         PINFO("Ret bytes : %d // len bytes : %d \n",ret,len);
+         del_bytes = len-ret;
          memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
          memset(dev->hi_prio_stream + dev->hi_valid_bytes - del_bytes,0,del_bytes);
          dev->hi_valid_bytes -= del_bytes;
@@ -281,17 +293,19 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          mutex_unlock(&(dev->mutex_hi)); 
          wake_up(&(dev->hi_queue));
          return len - ret;
-         }
+         
   read_low: 
-      if(*off > dev->low_valid_bytes) {
-            	 mutex_unlock(&(dev->mutex_low));
-	             return 0;
+      if(len > dev->low_valid_bytes) {
+              int m = len - (len-dev->hi_valid_bytes);
+              PINFO("Can read only %d bytes of %d bytes requested \n",m, len);
+              len=len - (len -dev->low_valid_bytes);
         } 
-        if((dev->low_valid_bytes - *off) < len) len = dev->low_valid_bytes - *off; {
+         PINFO("valid bytes %d - requested to read %d \n", dev->hi_valid_bytes, len);
          PINFO("somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
          PDEBUG("current LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
-         ret = copy_to_user(buff,&(dev->low_prio_stream[*off]),len);
-         int del_bytes = len-ret;
+         ret = copy_to_user(buff,&(dev->low_prio_stream[0]),len);
+         PINFO("Ret bytes : %d // len bytes : %d \n",ret,len);
+         del_bytes = len-ret;
          memmove(dev->low_prio_stream, (dev->low_prio_stream) + (del_bytes),(dev->low_valid_bytes) - (del_bytes));
          memset(dev->low_prio_stream + dev->low_valid_bytes - del_bytes,0,del_bytes);
          dev->low_valid_bytes -= del_bytes;
@@ -300,7 +314,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          mutex_unlock(&(dev->mutex_low)); 
          wake_up(&(dev->low_queue));
          return len - ret;
-       }
+       
   }
 
 
@@ -403,10 +417,11 @@ int i;
 	PINFO("new device registered, it is assigned major number %d\n", Major);
 	return 0;
   revert_allocation:
-	for(;i>=0;i--){
+	 for(;i>=0;i--){
 		free_page((unsigned long)devices[i].hi_prio_stream);
 		free_page((unsigned long)devices[i].low_prio_stream);
-	}
+    destroy_workqueue(devices[i].wq);
+	 }
 	return -ENOMEM;
 
 
