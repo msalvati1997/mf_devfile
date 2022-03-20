@@ -36,18 +36,11 @@ char buff[4096];
         printf("\t\t%s\n", minors_list[i]);
     }
 	printf("\n\nThis is a testing program. Starting tests...\n");
-	printf("\n\tTest  - concurrent  write and read..\n");
+	printf("\n\tTest  -   write and read in same session..\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-        pthread_create(&tid3, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-		pthread_create(&tid4, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-	
 		pthread_join(tid1,NULL);
-		pthread_join(tid2,NULL);
-        pthread_join(tid3,NULL);
-		pthread_join(tid4,NULL);
 		sleep(2);
 
 	}

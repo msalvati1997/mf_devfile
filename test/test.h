@@ -81,6 +81,8 @@ void * the_thread_write_hi_block(void* path){
 
     printf("Writing on high priority stream... : %s \n",buff);
 	write(fd,buff,strlen(buff));
+	close(fd);
+
 	return NULL;
 }
 void * the_thread_read_hi_block(void* path){
@@ -105,6 +107,7 @@ void * the_thread_read_hi_block(void* path){
 	char * buff = malloc(sizeof(char)*7);
 	read(fd,buff,sizeof(char)*7);
 	printf("Readed from high level stream %s \n",buff);
+	close(fd);
 	return NULL;
 }
 
@@ -132,6 +135,8 @@ void * the_thread_write_low_block(void* path){
 	buff = strcat(data," ");
 	printf("Writing on low priority stream...: %s \n",buff);
 	write(fd,buff,strlen(buff));
+
+	close(fd);
 	
 	return NULL;
 
@@ -173,6 +178,7 @@ void * the_thread_write_low_disable(void* path){
 
 
 	ioctl(fd,IOCTL_ENABLE);
+	close(fd);
 
 	return NULL;
 
@@ -196,10 +202,11 @@ void * the_thread_read_low_block(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); // blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3500); //SET TIMER in milliseconds
+	ioctl(fd,IOCTL_SETTIMER,10000); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*7);
 	read(fd,buff,sizeof(char)*7);
 	printf("Readed from low level stream %s \n",buff);
+	close(fd);
 
 	return NULL;
 
@@ -229,6 +236,8 @@ void * the_thread_write_hi_nb(void* path){
 	buff = strcat(data," ");
     printf("Writing on high priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
+	close(fd);
+
 	return NULL;
 }
 void * the_thread_read_hi_nb(void* path){
@@ -253,6 +262,8 @@ void * the_thread_read_hi_nb(void* path){
 	char * buff = malloc(sizeof(char)*7);
 	read(fd,buff,sizeof(char)*7);
 	printf("Readed from high level stream %s \n",buff);
+	close(fd);
+
 	return NULL;
 }
 
@@ -274,12 +285,14 @@ void * the_thread_write_low_nb(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3500); //SET TIMER in milliseconds
+	ioctl(fd,IOCTL_SETTIMER,5000); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data," ");
 	printf("Writing on low priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
+	
+	close(fd);
 	
 	return NULL;
 
@@ -303,10 +316,11 @@ void * the_thread_read_low_nb(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3500); //SET TIMER in milliseconds
+	ioctl(fd,IOCTL_SETTIMER,10000); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*7);
 	read(fd,buff,sizeof(char)*7);
 	printf("Readed from low level stream %s \n",buff);
+	close(fd);
 
 	return NULL;
 
@@ -321,27 +335,35 @@ void * the_thread_write_and_read(void* path){
 	sleep(1);
 
 	printf("opening device %s\n",device);
-	fd = open(device,O_RDWR|O_APPEND);
+	fd = open(device,O_RDWR);
 	if(fd == -1) {
 		printf("open error on device %s\n",device);
 		return NULL;
 	}
 	printf("device %s successfully opened\n",device);
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
-	ioctl(fd, IOCTL_HIGH_PRIO); //low priority  
-	ioctl(fd,IOCTL_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
-	char * buff = malloc(sizeof(char)*8);
+	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
+	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
+	ioctl(fd,IOCTL_SETTIMER,6000); //SET TIMER in milliseconds
+	sleep(1);
+	
+	char * buff_write = NULL;
+	buff_write= malloc(sizeof(char)*8);
+	char * buff_read =  NULL;
+	buff_read= malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
-	buff = strcat(data," ");
-	printf("Writing to low level stream %s\n",buff);	
-	write(fd,buff,strlen(buff));
+	buff_write = strcat(data," ");
+	printf("Writing to low level stream %s\n",buff_write);	
+	write(fd,buff_write,strlen(buff_write));
 
+	sleep(5);
+	printf("Trying to read my 8 bytes \n");
+	read(fd,buff_read,sizeof(char)*8);
+	
+	printf("Readed from low level stream %s \n",buff_read);
 
-	sleep(2);
-	char * buff1 = malloc(sizeof(char)*7);
-	read(fd,buff1,sizeof(char)*7);
-	printf("Readed from low level stream %s \n",buff1);
+	sleep(1);
+	close(fd);
 
 	return NULL;
 

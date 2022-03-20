@@ -39,7 +39,7 @@ static void deferred_work(struct work_struct *work) {
 
 
 if (session->op==0) { //non blocking operation
-        if(mutex_trylock(&dev->mutex_low)) { //non blocking 
+        if(!mutex_trylock(&dev->mutex_low)) { //non blocking 
          PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
          return;
         } else {
@@ -48,7 +48,7 @@ if (session->op==0) { //non blocking operation
  } else { //blocking operation
      __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
       if(!wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies)) {
-           PINFO("%s - command timed out.", __func__);
+           PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
            __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return;
         }
@@ -125,11 +125,10 @@ static int dev_release(struct inode *inode, struct file *file) {
    int minor;
    minor = get_minor(file);
    session_data_t *session = file->private_data;
-   if (session != NULL){
-     kfree(session);
-    }
+   kfree(session);
 
    PINFO("device file closed\n");
+
    //device closed by default nop
    return 0;
 
@@ -160,7 +159,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
       if (session->prio == 0) { //high priority stream 
            __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
-           PINFO("%s - command timed out.", __func__);
+           PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
            __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return -1;
         } else {
@@ -243,7 +242,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       if (session->prio == 0) { //high priority stream  
         __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
-           PINFO("%s - command timed out.", __func__);
+           PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return -1;
         }
@@ -256,7 +255,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
         if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           PINFO("%s - command timed out.", __func__);
+            PINFO("%s - command timed out - current jiffies : %s\n", __func__, session->jiffies);
            return -1;
         } else {
          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
@@ -265,7 +264,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
        }
       }
   read_hi : 
-    if(*off > dev->hi_valid_bytes) {
+       if(*off > dev->hi_valid_bytes) {
             	mutex_unlock(&(dev->mutex_hi));
 	            return 0;
         } 
@@ -273,13 +272,12 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
          PDEBUG("current HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
          ret = copy_to_user(buff,&(dev->hi_prio_stream[*off]),len);
-         off += (len - ret);
-         //dev->hi_prio_stream+=len;
-         dev->hi_valid_bytes-=len;
-         memmove(dev->hi_prio_stream, dev->hi_prio_stream+=len,dev->hi_valid_bytes); //consuming readed byte
-         memset(dev->hi_prio_stream + dev->hi_valid_bytes - len - ret,0,len-ret); //cleaning last byte
-         PDEBUG("after read HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
+         int del_bytes = len-ret;
+         memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
+         memset(dev->hi_prio_stream + dev->hi_valid_bytes - del_bytes,0,del_bytes);
+         dev->hi_valid_bytes -= del_bytes;
          high_bytes[minor] = dev->hi_valid_bytes;
+         PDEBUG("after read HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
          mutex_unlock(&(dev->mutex_hi)); 
          wake_up(&(dev->hi_queue));
          return len - ret;
@@ -290,16 +288,15 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
 	             return 0;
         } 
         if((dev->low_valid_bytes - *off) < len) len = dev->low_valid_bytes - *off; {
-         PDEBUG("current LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
          PINFO("somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
+         PDEBUG("current LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
          ret = copy_to_user(buff,&(dev->low_prio_stream[*off]),len);
-         off += (len - ret);
-         // dev->low_prio_stream+=len;
-         dev->low_valid_bytes-=len;
-         memmove(dev->low_prio_stream, dev->low_prio_stream+=len,dev->low_valid_bytes);  //consuming bytes
-         memset(dev->low_prio_stream + dev->low_valid_bytes - len - ret,0,len-ret); //cleaning last byte
-         PDEBUG("after read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
+         int del_bytes = len-ret;
+         memmove(dev->low_prio_stream, (dev->low_prio_stream) + (del_bytes),(dev->low_valid_bytes) - (del_bytes));
+         memset(dev->low_prio_stream + dev->low_valid_bytes - del_bytes,0,del_bytes);
+         dev->low_valid_bytes -= del_bytes;
          low_bytes[minor] = dev->low_valid_bytes;
+         PDEBUG("after read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
          mutex_unlock(&(dev->mutex_low)); 
          wake_up(&(dev->low_queue));
          return len - ret;
@@ -423,8 +420,7 @@ static void __exit multiflowdriver_exit(void) {
 		free_page((unsigned long)devices[i].hi_prio_stream);
     flush_workqueue(devices[i].wq);
     destroy_workqueue(devices[i].wq);
-	}
-  
+	}  
 	
 	unregister_chrdev(Major, DEVICE_NAME);
 
