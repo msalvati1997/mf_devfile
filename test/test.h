@@ -76,8 +76,6 @@ void * the_thread_write_hi_block(void* path){
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
-	ioctl(fd,IOCTL_SETTIMER,3500); //SET TIMER in milliseconds
-
 
     printf("Writing on high priority stream... : %s \n",buff);
 	write(fd,buff,strlen(buff));
@@ -102,9 +100,7 @@ void * the_thread_read_hi_block(void* path){
 	printf("device %s successfully opened\n",device);
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
-	ioctl(fd,IOCTL_BLOCKING); //blocking operations 	
-	ioctl(fd,IOCTL_SETTIMER,3000); //SET TIMER in milliseconds
-	
+	ioctl(fd,IOCTL_BLOCKING); //blocking operations 		
 	read(fd,buff,7);
 	printf("Readed from high level stream %s \n",buff);
 	close(fd);
@@ -129,7 +125,6 @@ void * the_thread_write_low_block(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data," ");
@@ -160,7 +155,6 @@ void * the_thread_write_low_disable(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); //-blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,2500); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data," ");
@@ -198,7 +192,6 @@ void * the_thread_read_low_block(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); // blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3000); //SET TIMER in milliseconds
 	read(fd,buff,7);
 	printf("Readed from low level stream %s \n",buff);
 	close(fd);
@@ -226,9 +219,7 @@ void * the_thread_write_hi_nb(void* path){
 	printf("device %s successfully opened\n",device);
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
-	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3500); //SET TIMER in milliseconds
-	
+	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 	
     printf("Writing on high priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
 	close(fd);
@@ -254,7 +245,6 @@ void * the_thread_read_hi_nb(void* path){
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3000); //SET TIMER in milliseconds
 	read(fd,buff,sizeof(char)*7);
 	printf("Readed from high level stream %s \n",buff);
 	close(fd);
@@ -280,7 +270,6 @@ void * the_thread_write_low_nb(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,5000); //SET TIMER in milliseconds
 	char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data," ");
@@ -312,7 +301,6 @@ void * the_thread_read_low_nb(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3000); //SET TIMER in milliseconds
 	read(fd,buff,7);
 	printf("Readed from low level stream %s \n",buff);
 	close(fd);
@@ -345,7 +333,6 @@ void * the_thread_write_and_read_low(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,3000); //SET TIMER in milliseconds
 	sleep(1);
 	
 
@@ -430,7 +417,7 @@ void * the_thread_read_all_low(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); // blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,30000000000000); //SET TIMER in milliseconds
+	ioctl(fd,IOCTL_SETTIMER,300000); //SET TIMER in milliseconds
 	read(fd,buff,4096);
 	printf("Readed ALL low level stream %s \n",buff);
 	close(fd);
@@ -458,7 +445,7 @@ void * the_thread_read_all_hi(void* path){
 	/*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //low priority  
 	ioctl(fd,IOCTL_BLOCKING); // blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,30000000000); //SET TIMER in milliseconds
+	ioctl(fd,IOCTL_SETTIMER,300000); //SET TIMER in milliseconds
 	read(fd,buff,4096);
 	printf("Readed ALL high level stream %s \n",buff);
 	close(fd);

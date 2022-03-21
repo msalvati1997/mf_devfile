@@ -62,14 +62,14 @@ if (session->op==0) { //non blocking operation
    if((tw->off) >= OBJECT_MAX_SIZE) {//offset too large
    	      PERR("offset too large\n");
           mutex_unlock(&dev->mutex_low);
-          wake_up(&(dev->low_queue));
+          wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
           kfree(tw);
           return;
         }
    if((tw->off) > dev->low_valid_bytes) {//offset bwyond the current stream size
     	   PERR("out of stream resources\n");
          mutex_unlock(&dev->mutex_low);
-         wake_up(&(dev->low_queue));
+         wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
          kfree(tw);
          return;
        }  
@@ -81,14 +81,12 @@ if (session->op==0) { //non blocking operation
         dev->low_valid_bytes = (tw->off); 
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
         low_bytes[minor] = dev->low_valid_bytes;
-        kfree(tw);
         mutex_unlock(&(dev->mutex_low));
-        wake_up(&(dev->low_queue));
+        wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
+        kfree(tw);
       }
  }
  
-
-/* the actual driver */
 
 static int dev_open(struct inode *inode, struct file *file) {
 
@@ -98,13 +96,14 @@ static int dev_open(struct inode *inode, struct file *file) {
       PERR("Device open: internal error\n");
     	return -ENODEV;
    }
-   if(devices_state[minor]==0) { 
+   if(devices_state[minor]==0) {  //if devices state is set to ENABLE 
       session_data_t *session = NULL;
-      session= kzalloc(sizeof(session_data_t),GFP_ATOMIC);
+      session= kzalloc(sizeof(session_data_t),GFP_ATOMIC); //allocate new session 
       if (session == NULL){
          PERR("Error allocating memory\n");
          return -ENOMEM;
       }
+      //allocate new session with default timeout
       session->TIMEOUT=DEFAULT_TIMEOUT;
       session->op=DEFAULT_OP;
       session->prio=DEFAULT_PRIO;
@@ -113,6 +112,7 @@ static int dev_open(struct inode *inode, struct file *file) {
       PINFO("DEVICE FILE [MIN %d] OPENED :  NEW SESSION CREATED\n",minor);
       return 0;
    } else {
+       //device set is set to DISABLE
       PERR("DEVICE FILE [MIN %d] DISABLED : CAN'T OPEN A NEW SESSION\n", minor);
       return 0;
    }
@@ -127,10 +127,7 @@ static int dev_release(struct inode *inode, struct file *file) {
    kfree(session);
 
    PINFO("device file closed\n");
-
-   //device closed by default nop
    return 0;
-
 }
 
 
@@ -171,18 +168,18 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   }
 
   write_hi:
-       *off = dev->hi_valid_bytes;
+        *off = dev->hi_valid_bytes; //set the offset at the end of stream of high prio
         if(*off >= OBJECT_MAX_SIZE) {//offset too large
      	      mutex_unlock(&(dev->mutex_hi));
-            wake_up(&(dev->hi_queue));
+            wake_up(&(dev->hi_queue));//wake up the waiting thread on the high prio stream
             PERR("No space left on device\n");
 	          return -ENOSPC;//no space left on device
            }
         if(*off > dev->hi_valid_bytes) {//offset bwyond the current stream size
   	        mutex_unlock(&(dev->mutex_hi));
-            wake_up(&(dev->hi_queue));
+            wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
             PERR("Out of stream resources \n");
- 	          return -ENOSR;//out of stream resources
+ 	          return -ENOSR;
           }  
         if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
@@ -193,23 +190,23 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
            PDEBUG("after write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
            high_bytes[minor] = dev->hi_valid_bytes;
            mutex_unlock(&(dev->mutex_hi)); 
-           wake_up(&(dev->hi_queue));
+           wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
            return len-ret;
         }
         return 0;
 
         
   write_low: 
-       *off = dev->low_valid_bytes;
-       deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC);
+       *off = dev->low_valid_bytes; //set the offset at the end of stream of low prio
+       deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC); //create the deferred_work struct for the deferred work
        bool result;
        data->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
        ret = copy_from_user(data->bff, buff, len);
        data->off=*off;
        data->filp=filp;
        data->len=len;
-       INIT_WORK(&data->w, deferred_work); 
-       result = queue_work(dev->wq, &data->w);
+       INIT_WORK(&data->w, deferred_work);  
+       result = queue_work(dev->wq, &data->w); //enqueue the deferred work
  	  	 if (result == false)  {
 			  PERR("%s:  failed to queue_work\n",__func__);
         return -1; 
@@ -219,7 +216,6 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
 }
 
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
-  *off=0;
   int minor = get_minor(filp);
   int ret;
   device *dev;
@@ -228,15 +224,15 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   session_data_t *session = filp->private_data;
 
    if (session->op==0) { //non blocking operation 
-     if(session->prio==0 ) {
-           if(!mutex_trylock(&dev->mutex_hi)) { 
+     if(session->prio==0 ) {  //high priority stream 
+           if(!mutex_trylock(&dev->mutex_hi)) {  //try ONCE to get the lock, not blocking
               PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
               return -1;// return to the caller   
       } else {
           goto read_hi;
       }
      } else {
-         if(!mutex_trylock(&dev->mutex_low)) { 
+         if(!mutex_trylock(&dev->mutex_low)) { //try ONCE to get the lock, not blocking
           PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
           return -1;// return to the caller   
       } else {
@@ -245,10 +241,10 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
      }       
   } else { //blocking operation 
       if (session->prio == 0) { //high priority stream  
-        __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-        if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
-          wake_up(&(dev->hi_queue));
-           PINFO("%s - command timed out - \n", __func__);
+        __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST); 
+        if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) { //waiting until the condition if true OR timeout EXPIRED
+          wake_up(&(dev->hi_queue)); //Wake up the waiting thread on the high prio stream
+           PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
            return -1;
         }
@@ -259,10 +255,10 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       }
       else { //low priority stream
          __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
-        if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
-           wake_up(&(dev->low_queue));
+        if(!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) { //waiting until the condition if true OR timeout expired 
+           wake_up(&(dev->low_queue));  //wake up the waiting thread on the low prio stream 
           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
-            PINFO("%s - command timed out - \n", __func__);
+            PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
             return -1;
         } else {
          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
@@ -271,7 +267,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
        }
       }
   read_hi :
-        *off = dev->hi_valid_bytes;
+        *off = dev->hi_valid_bytes; 
         if(len > dev->hi_valid_bytes) {
               len=len - (len-dev->hi_valid_bytes);
         } 
@@ -292,7 +288,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          
   read_low: 
       *off = dev->low_valid_bytes;
-      if(len > dev->low_valid_bytes) {
+       if(len > dev->low_valid_bytes) {
               len=len - (len -dev->low_valid_bytes);
         } 
          PINFO("somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
@@ -345,9 +341,13 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
      	session->op = 0;
 			break;
     case IOCTL_SETTIMER :
-    	session->TIMEOUT= arg; //milliseconds
-      session->jiffies=msecs_to_jiffies(arg);
-      PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
+      if ((int) arg < 0) {
+        PERR("PROBLEM ON SETTING TIMEOUT VALUE\n");
+      } else {
+        session->TIMEOUT= (int) arg; //milliseconds
+        session->jiffies=msecs_to_jiffies((int)arg);
+        PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
+      }
     case IOCTL_ENABLE:
      	devices_state[minor]=0;
       PINFO("CALLED IOCTL_ENABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
@@ -359,17 +359,15 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
 		default:
       PERR("UNKOWN IOCTL COMMAND\n");
 			return -ENOTTY;
-	}
-
+  }
   //do here whathever you would like to control the state of the device
   return 0;
-
 }
 
 
 
 static struct file_operations fops = {
-  .owner = THIS_MODULE,//do not forget this
+  .owner = THIS_MODULE,
   .write = dev_write,
   .read = dev_read,
   .open =  dev_open,
@@ -397,7 +395,7 @@ int i;
     /* max_active is 0, which means set as 256 for max_active. */
     char str[15];
     sprintf( str, "%s%d", "mfdev_wq_", i );
-    devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);
+    devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);  //allocate workqueue for devices[i]
 		if(devices[i].hi_prio_stream == NULL || devices[i].low_prio_stream ==NULL ) goto revert_allocation;
 	}
 
