@@ -75,7 +75,7 @@ if (session->op==0) { //non blocking operation
        }  
    if((OBJECT_MAX_SIZE - (tw->off)) < (tw->len)) (tw->len) = OBJECT_MAX_SIZE - (tw->off); {
         PDEBUG("current LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
-        (tw->off)  += dev->low_valid_bytes;
+        (tw->off)  = dev->low_valid_bytes;
         strncat(&(dev->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
         tw->off +=tw->len;
         dev->low_valid_bytes = (tw->off); 
@@ -172,6 +172,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   }
 
   write_hi:
+       *off = dev->hi_valid_bytes;
         if(*off >= OBJECT_MAX_SIZE) {//offset too large
      	      mutex_unlock(&(dev->mutex_hi));
             wake_up(&(dev->hi_queue));
@@ -187,7 +188,6 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
         if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
            PDEBUG("current HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
-           *off += dev->hi_valid_bytes;
            PINFO("Off %ld\n",*off);
            ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
            PINFO("Ret %d - Len %ld\n", ret , len);
@@ -203,6 +203,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
 
         
   write_low: 
+       *off = dev->low_valid_bytes;
        deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC);
        bool result;
        data->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
@@ -274,10 +275,9 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
        }
       }
   read_hi :
+      *off = dev->hi_valid_bytes;
        if(len > dev->hi_valid_bytes) {
-              int m = len - (len-dev->hi_valid_bytes);
-              PINFO("Can read only %d bytes of %d bytes requested \n",m, len);
-              len=len - (len -dev->hi_valid_bytes);
+              len=len - (len-dev->hi_valid_bytes);
         } 
          PINFO("valid bytes %d - requested to read %d\n", dev->hi_valid_bytes, len);
          PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
@@ -287,7 +287,9 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          del_bytes = len-ret;
          memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
          memset(dev->hi_prio_stream + dev->hi_valid_bytes - del_bytes,0,del_bytes);
-         dev->hi_valid_bytes -= del_bytes;
+         *off = dev->hi_valid_bytes;
+         *off -= del_bytes;
+         dev->hi_valid_bytes = *off;
          high_bytes[minor] = dev->hi_valid_bytes;
          PDEBUG("after read HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
          mutex_unlock(&(dev->mutex_hi)); 
@@ -295,6 +297,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          return len - ret;
          
   read_low: 
+      *off = dev->low_valid_bytes;
       if(len > dev->low_valid_bytes) {
               int m = len - (len-dev->hi_valid_bytes);
               PINFO("Can read only %d bytes of %d bytes requested \n",m, len);
@@ -308,7 +311,9 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          del_bytes = len-ret;
          memmove(dev->low_prio_stream, (dev->low_prio_stream) + (del_bytes),(dev->low_valid_bytes) - (del_bytes));
          memset(dev->low_prio_stream + dev->low_valid_bytes - del_bytes,0,del_bytes);
-         dev->low_valid_bytes -= del_bytes;
+         *off = dev->low_valid_bytes;
+         *off -= del_bytes;
+         dev->low_valid_bytes = *off;
          low_bytes[minor] = dev->low_valid_bytes;
          PDEBUG("after read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
          mutex_unlock(&(dev->mutex_low)); 
