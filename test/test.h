@@ -79,8 +79,8 @@ void * the_thread_write_hi_block(void* path){
 
     printf("Writing on high priority stream... : %s \n",buff);
 	write(fd,buff,strlen(buff));
+	sleep(1);
 	close(fd);
-
 	return NULL;
 }
 void * the_thread_read_hi_block(void* path){
@@ -103,6 +103,7 @@ void * the_thread_read_hi_block(void* path){
 	ioctl(fd,IOCTL_BLOCKING); //blocking operations 		
 	read(fd,buff,7);
 	printf("Readed from high level stream %s \n",buff);
+	sleep(1);
 	close(fd);
 	return NULL;
 }
@@ -129,7 +130,9 @@ void * the_thread_write_low_block(void* path){
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data," ");
 	printf("Writing on low priority stream...: %s \n",buff);
+	
 	write(fd,buff,strlen(buff));
+	sleep(1);
 
 	close(fd);
 	
@@ -167,6 +170,7 @@ void * the_thread_write_low_disable(void* path){
 	
 
 	ioctl(fd,IOCTL_ENABLE);
+	sleep(1);
 	close(fd);
 
 	return NULL;
@@ -194,6 +198,7 @@ void * the_thread_read_low_block(void* path){
 	ioctl(fd,IOCTL_BLOCKING); // blocking operations 
 	read(fd,buff,7);
 	printf("Readed from low level stream %s \n",buff);
+	sleep(1);
 	close(fd);
 
 	return NULL;
@@ -222,6 +227,7 @@ void * the_thread_write_hi_nb(void* path){
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 	
     printf("Writing on high priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
+	sleep(1);
 	close(fd);
 
 	return NULL;
@@ -247,6 +253,7 @@ void * the_thread_read_hi_nb(void* path){
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
 	read(fd,buff,sizeof(char)*7);
 	printf("Readed from high level stream %s \n",buff);
+	sleep(1);
 	close(fd);
 
 	return NULL;
@@ -275,7 +282,7 @@ void * the_thread_write_low_nb(void* path){
 	buff = strcat(data," ");
 	printf("Writing on low priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
-	
+	sleep(1);
 	close(fd);
 	
 	return NULL;
@@ -303,6 +310,7 @@ void * the_thread_read_low_nb(void* path){
 	ioctl(fd,IOCTL_NO_BLOCKING); // no blocking operations 
 	read(fd,buff,7);
 	printf("Readed from low level stream %s \n",buff);
+	sleep(1);
 	close(fd);
 
 	return NULL;
