@@ -39,10 +39,10 @@ char buff[4096];
 	printf("\n\tPARAM TEST\n");
 	for(i=0;i<minors;i++)
 	{
-		pthread_create(&tid1, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-        pthread_create(&tid3, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-		pthread_create(&tid4, NULL, the_thread_write_and_read, strdup(minors_list[i]));
+		pthread_create(&tid1, NULL, the_thread_write_and_read_hi, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_write_and_read_hi, strdup(minors_list[i]));
+        pthread_create(&tid3, NULL, the_thread_write_and_read_low, strdup(minors_list[i]));
+		pthread_create(&tid4, NULL, the_thread_write_and_read_hi, strdup(minors_list[i]));
 	
 		pthread_join(tid1,NULL);
 		pthread_join(tid2,NULL);

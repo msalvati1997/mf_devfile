@@ -3,7 +3,7 @@
 Driver Name		:		multiflow-driver
 Author			:		MARTINA SALVATI
 License			:		GPL
-Description		:		LINUX MULTI_FLOW DEVICE DRIVER PROJECT
+Description		:		LINUX MULTI_FLOW DEVICE DRIVER 
 ===============================================================================
 */
 
