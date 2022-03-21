@@ -12,8 +12,8 @@ This project is related to a Linux device driver implementing low and high prior
 
 ## Multiflow driver 
 
-| Driver file operations - fops  |   |   |   |   |
-|---|---|---|---|---|
+| Driver file operations - fops  |  
+|---|
 |  static int dev_open(struct inode *, struct file *);
   | static int dev_release(struct inode *, struct file *);
   |  static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
