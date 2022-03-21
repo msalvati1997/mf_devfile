@@ -1,11 +1,9 @@
   
 
 Multi-flow device file
-
 ==================
 
 ## Martina Salvati
-
 Advanced Operating Systems - MS Degree in Computer Engineering - Academic Year 2021/202
 
 
