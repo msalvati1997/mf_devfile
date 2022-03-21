@@ -2,14 +2,26 @@
 Multi-flow device file 
 ==================
 ## Martina Salvati
-### Advanced Operating Systems 
-#### MS Degree in Computer Engineering
-#### Academic Year 2021/202
+Advanced Operating Systems - MS Degree in Computer Engineering - Academic Year 2021/202
 
 ## Project's description
 
 This project is related to a Linux device driver implementing low and high priority flows of data. Through an open session to the device file a thread can read/write data segments. The data delivery follows a First-in-First-out policy along each of the two different data flows (low and high priority). After read operations, the read data disappear from the flow. Also, the high priority data flow must offer synchronous write operations while the low priority data flow must offer an asynchronous execution (based on delayed work) of write operations, while still keeping the interface able to synchronously notify the outcome. Read operations are all executed synchronously. The device driver should support 128 devices corresponding to the same amount of minor numbers.
 
+## Installation
+1. Clone this repo
+    ```bash
+   cd
+   git clone https://github.com/msalvati1997/mf_devfile.git
+   ```
+2. Begin install
+- The install script can be use in order to install/uninstall the module.
+
+   ```bash
+   cd ~/driver
+   sudo ./install.sh
+   ```
+   ![alt text](https://github.com/msalvati1997/mf_devfile/main/driver/INSTALLATION_SCRIPT.png "WELCOME DISPLAY")
 ## Multiflow driver 
 
 | Driver file operations - fops  |  
@@ -19,21 +31,6 @@ This project is related to a Linux device driver implementing low and high prior
   |  static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
  |  static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
  |   |
-
-
-
-## Installation
-1. Clone this repo
-    ```bash
-   cd
-   git clone https://github.com/msalvati1997/mf_devfile.git
-   ```
-2. Begin install
-
-   ```bash
-   cd ~/driver
-   sudo ./install.sh
-   ```
 
 ## IOCTL - device file settings
 The device parameters of files can be manipulated by the ioctl() system call. 
