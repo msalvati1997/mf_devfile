@@ -98,13 +98,10 @@ char buff[4096];
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_timeout_expired_high, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_timeout_expired_high, strdup(minors_list[i]));
-		pthread_create(&tid3, NULL, the_thread_timeout_expired_low, strdup(minors_list[i]));
-		pthread_create(&tid4, NULL, the_thread_timeout_expired_low, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_timeout_expired_low, strdup(minors_list[i]));
 		pthread_join(tid1,NULL);
 		pthread_join(tid2,NULL);
-		pthread_join(tid3,NULL);
-		pthread_join(tid4,NULL);
+
 	
 		sleep(1);
 
