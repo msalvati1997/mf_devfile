@@ -74,13 +74,12 @@ if (session->op==0) { //non blocking operation
          return;
        }  
    if((OBJECT_MAX_SIZE - (tw->off)) < (tw->len)) (tw->len) = OBJECT_MAX_SIZE - (tw->off); {
-        PDEBUG("current LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
+        PDEBUG("before deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
         (tw->off)  = dev->low_valid_bytes;
         strncat(&(dev->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
         tw->off +=tw->len;
         dev->low_valid_bytes = (tw->off); 
         PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
-        PINFO("[Deferred work]=> PID: %d; NAME: %s - FINISHED\n", current->pid, current->comm);
         low_bytes[minor] = dev->low_valid_bytes;
         kfree(tw);
         mutex_unlock(&(dev->mutex_low));
@@ -187,10 +186,8 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
           }  
         if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
-           PDEBUG("current HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
-           PINFO("Off %ld\n",*off);
+           PDEBUG("before write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
            ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
-           PINFO("Ret %d - Len %ld\n", ret , len);
            *off += (len - ret);
            dev->hi_valid_bytes = *off;           
            PDEBUG("after write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
@@ -236,7 +233,6 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
               PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
               return -1;// return to the caller   
       } else {
-          PINFO("LEN BEFORE MODIFIED %d\n", len);
           goto read_hi;
       }
      } else {
@@ -275,15 +271,13 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
        }
       }
   read_hi :
-      *off = dev->hi_valid_bytes;
-       if(len > dev->hi_valid_bytes) {
+        *off = dev->hi_valid_bytes;
+        if(len > dev->hi_valid_bytes) {
               len=len - (len-dev->hi_valid_bytes);
         } 
-         PINFO("valid bytes %d - requested to read %d\n", dev->hi_valid_bytes, len);
          PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
-         PDEBUG("current HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
+         PDEBUG("before read  HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
          ret = copy_to_user(buff,&(dev->hi_prio_stream[0]),len);
-         PINFO("Ret bytes : %d // len bytes : %d \n",ret,len);
          del_bytes = len-ret;
          memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
          memset(dev->hi_prio_stream + dev->hi_valid_bytes - del_bytes,0,del_bytes);
@@ -299,15 +293,11 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   read_low: 
       *off = dev->low_valid_bytes;
       if(len > dev->low_valid_bytes) {
-              int m = len - (len-dev->hi_valid_bytes);
-              PINFO("Can read only %d bytes of %d bytes requested \n",m, len);
               len=len - (len -dev->low_valid_bytes);
         } 
-         PINFO("valid bytes %d - requested to read %d \n", dev->hi_valid_bytes, len);
          PINFO("somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
-         PDEBUG("current LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
+         PDEBUG("before read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
          ret = copy_to_user(buff,&(dev->low_prio_stream[0]),len);
-         PINFO("Ret bytes : %d // len bytes : %d \n",ret,len);
          del_bytes = len-ret;
          memmove(dev->low_prio_stream, (dev->low_prio_stream) + (del_bytes),(dev->low_valid_bytes) - (del_bytes));
          memset(dev->low_prio_stream + dev->low_valid_bytes - del_bytes,0,del_bytes);
@@ -336,35 +326,35 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
       session->op=DEFAULT_OP;
       session->TIMEOUT=DEFAULT_TIMEOUT;
       session->jiffies=msecs_to_jiffies(DEFAULT_TIMEOUT);
-      //PINFO("CALLED IOCTL_RESET ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_RESET ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
        break;
 		case IOCTL_HIGH_PRIO:
-      //PINFO("CALLED IOCTL_HIGH_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_HIGH_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
     	session->prio = 0;
 			break;
 		case IOCTL_LOW_PRIO:
-      //PINFO("CALLED IOCTL_LOW_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_LOW_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
     	session->prio = 1;
 			break;
     case IOCTL_BLOCKING :
-      //PINFO("CALLED IOCTL_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
       session->op = 1;
 			break;
     case IOCTL_NO_BLOCKING:
-      //PINFO("CALLED IOCTL_NO_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_NO_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
      	session->op = 0;
 			break;
     case IOCTL_SETTIMER :
     	session->TIMEOUT= arg; //milliseconds
       session->jiffies=msecs_to_jiffies(arg);
-      //PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
+      PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
     case IOCTL_ENABLE:
      	devices_state[minor]=0;
-      //PINFO("CALLED IOCTL_ENABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_ENABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
 			break;  
     case IOCTL_DISABLE:
      	devices_state[minor]=1;
-     // PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
 			break;    
 		default:
       PERR("UNKOWN IOCTL COMMAND\n");

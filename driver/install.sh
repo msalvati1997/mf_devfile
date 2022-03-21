@@ -12,14 +12,15 @@ fi
 echo "----------------------------------------------------------------------------------------------------"
 echo  "     WELCOME TO THE LINUX MULTIFLOW DEVICE DRIVER INSTALL SCRIPT BY MARTINA SALVATI       "
 echo "----------------------------------------------------------------------------------------------------"
-echo "        ->  To install the program enter : INSTALL                                                  "
-echo "        ->  To uninstall the program enter : UNINSTALL                                              "
-echo "        ->  To close the install script enter : CLOSE                                               "
+echo "      Enter command :                                                                          "
+echo "        1  To install the program enter                                                  "
+echo "        2  To uninstall the program enter                                              "
+echo "        3  To close the install script enter                                                "
 echo "----------------------------------------------------------------------------------------------------"
 
 while read -r VAR; do
 
-if [ $VAR = "INSTALL" ]; then
+if [ $VAR = 1 ]; then
 echo
 make
 sudo make install
@@ -29,7 +30,7 @@ echo "                      Multi-flow Linux Driver installation complete     !!
 echo "####################################################################################################"
 break
 
-elif [ $VAR = "UNINSTALL" ]; then
+elif [ $VAR = 2 ]; then
 echo
 make
 sudo rm /dev/mfdev*
@@ -40,7 +41,7 @@ echo "                     Multi-flow Linux Driver uninstallation complete     !
 echo "####################################################################################################"
 break
 
-elif [ $VAR = "CLOSE" ]; then
+elif [ $VAR = 3 ]; then
 
 echo "####################################################################################################"
 echo "                                           Good bye                                                 "

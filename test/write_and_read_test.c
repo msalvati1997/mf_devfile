@@ -47,9 +47,17 @@ char buff[4096];
 
 	}
 	printf("\n\tTest complete \n");
+	printf("\n\tCleaning stream after test with reading all..\n");
 
-    
+    for(i=0;i<minors;i++)
+	{
+    pthread_create(&tid1, NULL, the_thread_read_all_low, strdup(minors_list[i]));
+    sleep(1);
+    pthread_create(&tid2, NULL, the_thread_read_all_hi, strdup(minors_list[i]));
+    pthread_join(tid1,NULL);
+	pthread_join(tid2,NULL);
+	sleep(1);
+		}	
 	printf("\t\tdone.\n");
-
     return 0;
 }

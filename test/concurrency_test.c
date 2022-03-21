@@ -69,6 +69,8 @@ char buff[4096];
 	printf("\n\tTest 2 complete \n");
 	printf("\t\tdone.\n");
 
+	sleep(2);
+
 	printf("\n\tTest 3 - concurrent read hi...\n");
 	for(i=0;i<minors;i++)
 	{
@@ -84,7 +86,8 @@ char buff[4096];
 
 	}
 	printf("\n\tTest 3 complete \n");
-
+     
+	sleep(2);
 	printf("\n\tTest 4 - concurrent read low...\n");
 	for(i=0;i<minors;i++)
 	{
@@ -100,6 +103,7 @@ char buff[4096];
 
 	}
 	printf("\n\tTest 4 complete \n");
+  	
 	printf("\t\tdone.\n");
 
     return 0;
