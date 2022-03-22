@@ -9,10 +9,12 @@
 #define IOCTL_BLOCKING _IO(TYPE,3)  
 #define IOCTL_NO_BLOCKING _IO(TYPE,4)  
 
-#define IOCTL_SETTIMER _IOWR(TYPE,5,int)  
+#define IOCTL_SETTIMER _IOWR(TYPE,5,int)  //milliseconds 
 
 #define IOCTL_ENABLE _IO(TYPE,6)  
 #define IOCTL_DISABLE _IO(TYPE,7)  
+
+#define IOCTL_TIMER_TEST _IO(TYPE,8)  
 
 
 #define DEFAULT_PRIO 1 // low prio

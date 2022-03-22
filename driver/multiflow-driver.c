@@ -77,9 +77,10 @@ if (session->op==0) { //non blocking operation
          kfree(tw);
          return;
        }  
-   if((OBJECT_MAX_SIZE - (tw->off)) < (tw->len)) (tw->len) = OBJECT_MAX_SIZE - (tw->off); {
         PDEBUG("before deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
         (tw->off)  = dev->low_valid_bytes;
+        dev->low_prio_stream = krealloc(dev->low_prio_stream,(dev->low_valid_bytes + tw->len),GFP_ATOMIC);
+        memset(dev->low_prio_stream + dev->low_valid_bytes ,0,tw->len);
         strncat(&(dev->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
         tw->off +=tw->len;
         dev->low_valid_bytes = (tw->off); 
@@ -88,7 +89,7 @@ if (session->op==0) { //non blocking operation
         mutex_unlock(&(dev->mutex_low));
         wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
         kfree(tw);
-      }
+      
  }
  
 
@@ -143,7 +144,6 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   device *dev;
   dev = devices + minor;
   session_data_t *session = filp->private_data;
-
   if (session->op==0) { //non blocking operation 
    if (session->prio == 0) { //high priority flow 
       if(!mutex_trylock(&dev->mutex_hi)) {
@@ -189,9 +189,10 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
             PERR("Out of stream resources : OFF %ld, HIGH VALID BYTES %d\n",*off, dev->hi_valid_bytes);
  	          return -ENOSR;
           }  
-        if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
            PDEBUG("before write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
+           dev->hi_prio_stream = krealloc(dev->hi_prio_stream,(dev->hi_valid_bytes+len),GFP_KERNEL);
+           memset(dev->hi_prio_stream + dev->hi_valid_bytes ,0,len);
            ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
            *off += (len - ret);
            dev->hi_valid_bytes = *off;           
@@ -200,7 +201,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
            mutex_unlock(&(dev->mutex_hi)); 
            wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
            return len-ret;
-        }
+        
         return 0;
 
   write_low: 
@@ -217,7 +218,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
  	  	 if (result == false)  {
 			  PERR("%s:  failed to queue_work\n",__func__);
         return -1; 
-      } 
+       } 
         return 0;
   return 0;
 }
@@ -265,7 +266,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       }
       else { //low priority stream
          __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
-        ret =wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies);
+        ret=wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies);
         if (!ret) { //waiting until the condition if true OR timeout expired 
           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
             PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
@@ -281,15 +282,21 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
       }
   read_hi :
         *off = dev->hi_valid_bytes; 
+        if(dev->hi_valid_bytes==0) {
+          PERR("NO BYTES IN DEVICE\n");
+          return -1;
+        }
         if(len > dev->hi_valid_bytes) {
-              len=len - (len-dev->hi_valid_bytes);
-        } 
+              len=len-(len-dev->hi_valid_bytes);
+        }
          PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
          PDEBUG("before read  HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
          ret = copy_to_user(buff,&(dev->hi_prio_stream[0]),len);
          del_bytes = len-ret;
          memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
          memset(dev->hi_prio_stream + dev->hi_valid_bytes - del_bytes,0,del_bytes);
+         if(del_bytes != 0) {
+         dev->hi_prio_stream = krealloc(dev->hi_prio_stream,dev->hi_valid_bytes - del_bytes,GFP_ATOMIC);
          *off = dev->hi_valid_bytes;
          *off -= del_bytes;
          dev->hi_valid_bytes = *off;
@@ -297,10 +304,15 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          PDEBUG("after read HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
          mutex_unlock(&(dev->mutex_hi)); 
          wake_up(&(dev->hi_queue));
-         return len - ret;
-         
+        }
+        return del_bytes;
+
   read_low: 
-      *off = dev->low_valid_bytes;
+        *off = dev->low_valid_bytes;
+        if(dev->low_valid_bytes==0) {
+          PERR("NO BYTES IN DEVICE\n");
+          return -1;
+        }
        if(len > dev->low_valid_bytes) {
               len=len - (len -dev->low_valid_bytes);
         } 
@@ -310,6 +322,8 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          del_bytes = len-ret;
          memmove(dev->low_prio_stream, (dev->low_prio_stream) + (del_bytes),(dev->low_valid_bytes) - (del_bytes));
          memset(dev->low_prio_stream + dev->low_valid_bytes - del_bytes,0,del_bytes);
+         if (del_bytes != 0 ) {
+         dev->low_prio_stream = krealloc(dev->low_prio_stream,dev->low_valid_bytes - del_bytes,GFP_ATOMIC);
          *off = dev->low_valid_bytes;
          *off -= del_bytes;
          dev->low_valid_bytes = *off;
@@ -317,8 +331,9 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
          PDEBUG("after read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
          mutex_unlock(&(dev->mutex_low)); 
          wake_up(&(dev->low_queue));
-         return len - ret;
-  }
+         } 
+   return del_bytes;
+}
 
 
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg) {
@@ -353,26 +368,23 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
      	session->op = 0;
 			break;
     case IOCTL_SETTIMER :
-      if ((int) arg < 0) {
-        PERR("PROBLEM ON SETTING TIMEOUT VALUE\n");
-      } else {
         //check for timeout input
-        if ((int)arg > MAX_TIMEOUT) {
+      if ((int) arg > MAX_TIMEOUT) {
            session->TIMEOUT= MAX_TIMEOUT; 
            session->jiffies=msecs_to_jiffies(MAX_TIMEOUT);
            PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
         }
-        if ((int) arg <= 0) {  //TIMEOUT CAN'T BE 0!
+      if ((int) arg <= 0) {  
             session->TIMEOUT= DEFAULT_TIMEOUT; //milliseconds
             session->jiffies=msecs_to_jiffies(DEFAULT_TIMEOUT);
             PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
         }
-        else {
-        session->TIMEOUT= (int) arg; //milliseconds
-        session->jiffies=msecs_to_jiffies((int)arg);
+      else {
+        session->TIMEOUT=(int)arg; //milliseconds
+        session->jiffies=msecs_to_jiffies(arg);
         PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
       }
-      }
+      break;
     case IOCTL_ENABLE:
      	devices_state[minor]=0;
       PINFO("CALLED IOCTL_ENABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
@@ -381,11 +393,14 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
      	devices_state[minor]=1;
       PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
 			break;    
+    case IOCTL_TIMER_TEST: //ONLY FOR TEST PURPOSE!! ..
+        session->jiffies= (20/10000000)*HZ;
+        PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
+        break;
 		default:
       PERR("UNKOWN IOCTL COMMAND\n");
 			return -ENOTTY;
   }
-  //do here whathever you would like to control the state of the device
   return 0;
 }
 
@@ -410,8 +425,7 @@ int i;
 		devices[i].low_valid_bytes = 0;
 		devices[i].hi_prio_stream = NULL;
 		devices[i].low_prio_stream = NULL;
-		devices[i].hi_prio_stream = (char*)__get_free_page(GFP_KERNEL);
-		devices[i].low_prio_stream = (char*)__get_free_page(GFP_KERNEL);
+	
    	mutex_init(&(devices[i].mutex_low));
     mutex_init(&(devices[i].mutex_hi));
     init_waitqueue_head(&(devices[i].hi_queue));
@@ -421,27 +435,16 @@ int i;
     char str[15];
     sprintf( str, "%s%d", "mfdev_wq_", i );
     devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);  //allocate workqueue for devices[i]
-		if(devices[i].hi_prio_stream == NULL || devices[i].low_prio_stream ==NULL ) goto revert_allocation;
-	}
 
 	Major = __register_chrdev(0, 0, 128, DEVICE_NAME, &fops);
 	//actually allowed minors are directly controlled within this driver
 	if (Major < 0) {
 	  printk("registering device failed\n");
 	  return Major;
-	}
-  
-  //
+	} }
+
 	PINFO("new device registered, it is assigned major number %d\n", Major);
 	return 0;
-  revert_allocation:
-	 for(;i>=0;i--){
-		free_page((unsigned long)devices[i].hi_prio_stream);
-		free_page((unsigned long)devices[i].low_prio_stream);
-    destroy_workqueue(devices[i].wq);
-	 }
-	return -ENOMEM;
-
 
 }
 
@@ -449,16 +452,16 @@ static void __exit multiflowdriver_exit(void) {
 
 	int i;
 	for(i=0;i<MINORS;i++){
-		free_page((unsigned long)devices[i].low_prio_stream);
-		free_page((unsigned long)devices[i].hi_prio_stream);
+//		free_page((unsigned long)devices[i].low_prio_stream);
+//		free_page((unsigned long)devices[i].hi_prio_stream);
     flush_workqueue(devices[i].wq);
     destroy_workqueue(devices[i].wq);
+    kfree(devices[i].low_prio_stream);
+    kfree(devices[i].hi_prio_stream);
 	}  
 	
 	unregister_chrdev(Major, DEVICE_NAME);
-
 	PINFO("%s: new device unregistered, it was assigned major number %d\n", Major);
-
 	return;
 
 }

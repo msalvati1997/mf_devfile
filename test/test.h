@@ -27,6 +27,7 @@ char buff[4096];
 #define IOCTL_ENABLE _IO(TYPE,6)  
 #define IOCTL_DISABLE _IO(TYPE,7)  
 
+#define IOCTL_TIMER_TEST _IO(TYPE,8)  
 
 #define DEFAULT_PRIO 1 // low prio
 #define DEFAULT_OP 0 // non blocking

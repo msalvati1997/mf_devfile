@@ -90,5 +90,3 @@ int high_waiting[MINORS];
 int low_waiting[MINORS]; 
 
 
-
-

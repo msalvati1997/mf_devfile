@@ -17,12 +17,20 @@ void * the_thread_timeout_expired_high(void* path){
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,100); //SET TIMER in milliseconds  - in this case 1 [HZ]
+	ioctl(fd,IOCTL_TIMER_TEST); 
     char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data,"_");
     printf("Writing on high priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+
     char * buff2 = malloc(sizeof(char)*8);
 
 	read(fd,buff2,8);
@@ -48,14 +56,29 @@ void * the_thread_timeout_expired_low(void* path){
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_LOW_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,100); //SET TIMER in milliseconds
+	ioctl(fd,IOCTL_TIMER_TEST); 
     char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data,"_");
     printf("Writing on low priority stream...%s \n",buff);
 	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
+	write(fd,buff,strlen(buff));
     char * buff2 = malloc(sizeof(char)*8);
 	read(fd,buff2,8);
+	
+
 	printf("Read from low priority stream.. %s\n", buff2);
 	return NULL;
 }

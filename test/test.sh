@@ -30,12 +30,17 @@ echo "        6    Run write-and_read_test                                      
 echo "        7    Exit Test Program                                                                           "
 echo "----------------------------------------------------------------------------------------------------"
 
+
 while read -r VAR; do
 
 if [ $VAR = 1 ]; then
 echo
 echo "        Enter the minor number :                                                          "
 read -r MIN; 
+if [[ $MIN -gt 128 ]]; then
+	echo "The minor number can't be greather than 128" 
+	break
+	fi
 echo "        The minor number is $MIN                             "
 make simple_test 
 sudo ./simple_test /dev/mfdev $MAJ $MIN
@@ -46,6 +51,10 @@ echo
 echo
 echo "        Enter the minor number :                                                          "
 read -r MIN; 
+ if [[ $MIN -gt 128 ]]; then
+	echo "The minor number can't be greather than 128" 
+	break
+	fi
 echo "        The minor number is $MIN       "
 make param_test 
 sudo ./param_test /dev/mfdev $MAJ $MIN        
@@ -56,6 +65,10 @@ echo
 echo
 echo "        Enter the minor number :                                                          "
 read -r MIN; 
+if [[ $MIN -gt 128 ]]; then
+	echo "The minor number can't be greather than 128" 
+	break 
+fi 
 echo "        The minor number is $MIN                             "
 make enable_disable_test
 sudo ./enable_disable_test /dev/mfdev $MAJ $MIN  
@@ -66,6 +79,10 @@ echo
 echo
 echo "        Enter the minor number :                                                          "
 read -r MIN; 
+if [[ $MIN -gt 128 ]]; then
+	echo "The minor number can't be greather than 128" 
+	break
+ fi
 echo "        The minor number is $MIN                             "
 make concurrency_test
 sudo ./concurrency_test /dev/mfdev $MAJ $MIN       
@@ -76,9 +93,13 @@ echo9
 echo
 echo "        Enter the minor number :                                                          "
 read -r MIN; 
+ if [[ $MIN -gt 128 ]]; then
+	echo "The minor number can't be greather than 128" 
+	break
+ fi
 echo "        The minor number is $MIN                             "
-make timeout_test
-sudo ./timeout_test /dev/mfdev $MAJ $MIN      
+ make timeout_test
+ sudo ./timeout_test /dev/mfdev $MAJ $MIN   
 break
 
 elif [ $VAR = 6 ]; then
@@ -86,6 +107,10 @@ echo
 echo
 echo "        Enter the minor number :                                                          "
 read -r MIN; 
+if [[ $MIN -gt 128 ]]; then
+	echo "The minor number can't be greather than 128" 
+	break
+fi
 echo "        The minor number is $MIN                             "
 make write_and_read_test
 sudo ./write_and_read_test /dev/mfdev $MAJ $MIN    
