@@ -17,7 +17,7 @@ void * the_thread_timeout_expired_high(void* path){
     /*int err = ioctl(fd, IOCTL_RESET);	//reset*/
 	ioctl(fd, IOCTL_HIGH_PRIO); //high
 	ioctl(fd,IOCTL_BLOCKING); // no blocking operations 
-	ioctl(fd,IOCTL_SETTIMER,2); //SET TIMER in milliseconds  - in this case 1 [HZ]
+	ioctl(fd,IOCTL_SETTIMER,2); //SET TIMER in milliseconds
     char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*5);
 	buff = strcat(data,"\n");
@@ -98,10 +98,13 @@ char buff[4096];
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_timeout_expired_high, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_timeout_expired_low, strdup(minors_list[i]));
+		pthread_create(&tid2, NULL, the_thread_timeout_expired_high, strdup(minors_list[i]));
+		pthread_create(&tid3, NULL, the_thread_timeout_expired_low, strdup(minors_list[i]));
+		pthread_create(&tid4, NULL, the_thread_timeout_expired_low, strdup(minors_list[i]));
 		pthread_join(tid1,NULL);
 		pthread_join(tid2,NULL);
-
+		pthread_join(tid3,NULL);
+		pthread_join(tid4,NULL);
 	
 		sleep(1);
 

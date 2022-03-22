@@ -30,7 +30,7 @@
 
 
 #define DRIVER_NAME "multiflow-driver"
-#define DEVICE_NAME "mfdev"  /* Device file name in /dev/ - not mandatory  */
+#define DEVICE_NAME "mf-dev"  /* Device file name in /dev/ - not mandatory  */
 #define PDEBUG(fmt,args...) printk(KERN_DEBUG"%s:"fmt,DRIVER_NAME, ##args)
 #define PERR(fmt,args...) printk(KERN_ERR"%s:"fmt,DRIVER_NAME,##args)
 #define PINFO(fmt,args...) printk(KERN_INFO"%s:"fmt,DRIVER_NAME, ##args)
@@ -66,12 +66,13 @@ typedef struct __session_data session_data_t;
 
 //device struct
 typedef struct _device{
+
   struct mutex mutex_hi;
   struct mutex mutex_low;
   wait_queue_head_t hi_queue; //wait event queue for high pio requests
   wait_queue_head_t low_queue;  //wait event queue for low prio requess
   int hi_valid_bytes;
-  struct workqueue_struct *wq; //workqueue struct 
+  struct workqueue_struct *wq; 
   int low_valid_bytes;
   char * hi_prio_stream; //the I/O node is a buffer in memory
   char * low_prio_stream; //the I/O node is a buffer in memory

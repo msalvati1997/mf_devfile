@@ -7,7 +7,7 @@ int action;
 int minors;
 unsigned long timeout;
 char **minors_list;
-pthread_t tid1, tid2, tid3, tid4, tid5, tid6, tid7, tid8, tid9;
+pthread_t tid1, tid2, tid3, tid4;
 char buff[4096];
 
 	int major = strtol(argv[2],NULL,10);
@@ -41,23 +41,20 @@ char buff[4096];
 	{
 		pthread_create(&tid1, NULL, the_thread_write_low_nb, strdup(minors_list[i]));
 		pthread_create(&tid2, NULL, the_thread_write_low_block, strdup(minors_list[i]));
-        //DISABLING
+        sleep(2);
 		pthread_create(&tid3, NULL, the_thread_write_low_disable, strdup(minors_list[i]));
+        sleep(2);
 		pthread_create(&tid4, NULL, the_thread_write_low_nb, strdup(minors_list[i]));
-        pthread_create(&tid5, NULL, the_thread_write_low_block, strdup(minors_list[i]));
-        pthread_create(&tid6, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
-        pthread_create(&tid7, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
-        pthread_create(&tid8, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
-        pthread_create(&tid9, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
+        pthread_create(&tid2, NULL, the_thread_write_low_block, strdup(minors_list[i]));
+        sleep(2);
+        pthread_create(&tid4, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
+        pthread_create(&tid2, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
+        pthread_create(&tid4, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
+        pthread_create(&tid2, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
 		pthread_join(tid1,NULL);
 		pthread_join(tid2,NULL);
 		pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
-		pthread_join(tid5,NULL);
-		pthread_join(tid6,NULL);
-		pthread_join(tid7,NULL);
-		pthread_join(tid8,NULL);       
-    	pthread_join(tid9,NULL);         
 		sleep(1);
 
 	}
