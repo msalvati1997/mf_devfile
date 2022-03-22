@@ -202,19 +202,83 @@ Some macros have been created that make it easier to set parameters (driver/mult
 | IOCTL_ENABLE | Allows to set the device state to enable. | 
 | IOCTL_DISABLE | Allows to set the device state to disable. | 
 
-## Open
-///
-## Writes
+FOPS
+=======================
 
-///
-## Reads
-  ///
+Open
+ -----------------------------
+The device opening operation allocates the private session structure. The allocation of the structure is allowed only if the device_state of the object is set to ENABLE (0), otherwise (DISABLE) it is not possible to create new sessions. 
 
-## Release 
-///
+Writes
+ -----------------------------
+The write operation of n bytes involves the allocation of n bytes of memory. Memory is dynamically allocated through the functions:
+
+```bash
+void * krealloc(const void * p, size_t new_size, gfp_t flags); //used to add new bytes
+ ```
+
+```bash
+void *memset(void *s, int c, size_t n);//used to initialize the memory allocated
+ ```
+
+```bash
+ ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
+ ```
+The write operation has a different behavior for each session parameter.
+
+* **HIGH PRIO STREAM** :
+    * **BLOCKING OPERATION**
+      The blocking operations work with the waitqueues. The process waits as long as the condition is met and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
+    * **NON BLOCKING OPERATION** : The non blocking operation work with the mutex_trylock API. It is not blocking: if the resource is busy, control returns to the user.
+
+    
+* **LOW PRIO STREAM** : A **workqueue deferred item** is allocated. Then the work is enqueue to the workqueue. 
+     * **BLOCKING OPERATION**
+       The blocking operations work with the waitqueues. The process waits as long as the condition is met and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
+    * **NON BLOCKING OPERATION** : The non blocking operation work with the mutex_trylock API. It is not blocking: if the resource is busy, control returns to the user.
+
+  
+
+Reads
+ -----------------------------
+  Readings are performed in FIFO mode from left to right. When a read is performed then the bytes read are removed from the stream.
+
+
+  ```bash
+void * krealloc(const void * p, size_t new_size, gfp_t flags); //used to remove readed bytes
+ ```
+ ```bash
+void *memset(void *s, int c, size_t n);//used to initialize the memory allocated
+ ```
+
+```bash
+         memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
+ ```
+
+
+```bash
+         memset(dev
+ ```
+  
+  * **HIGH PRIO STREAM** :
+    * **BLOCKING OPERATION**
+      The blocking operations work with the waitqueues. The process waits as long as the condition is met and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
+    * **NON BLOCKING OPERATION** : The non blocking operation work with the mutex_trylock API. It is not blocking: if the resource is busy, control returns to the user.
+
+    
+* **LOW PRIO STREAM** : 
+     * **BLOCKING OPERATION**
+       The blocking operations work with the waitqueues. The process waits as long as the condition is met and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
+    * **NON BLOCKING OPERATION** : The non blocking operation work with the mutex_trylock API. It is not blocking: if the resource is busy, control returns to the user.
+
+  
+
+Release 
+ -----------------------------
+
 
 Usage
-==================
+ -----------------------------
 
 
 1. Open device :
