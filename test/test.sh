@@ -126,3 +126,5 @@ else
 fi
 
 done
+
+exit 0
