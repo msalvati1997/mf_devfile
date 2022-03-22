@@ -7,7 +7,7 @@ int action;
 int minors;
 unsigned long timeout;
 char **minors_list;
-pthread_t tid1, tid2, tid3, tid4;
+pthread_t tid1, tid2, tid3, tid4,tid5,tid6;
 char buff[4096];
 
 	int major = strtol(argv[2],NULL,10);
@@ -37,22 +37,54 @@ char buff[4096];
     }
 	printf("\n\nThis is a testing program. Starting tests...\n");
 	printf("\n\tPARAM TEST\n");
+    printf("high_bytes\n");
+    sprintf(buff, "cat /sys/module/multiflow_driver/parameters/high_bytes");
+    system(buff);
+    printf("low_bytes\n");
+    sprintf(buff, "cat /sys/module/multiflow_driver/parameters/low_bytes");
+    system(buff);
+    printf("high_waiting\n");
+    sprintf(buff, "cat /sys/module/multiflow_driver/parameters/high_waiting");
+    system(buff);
+    printf("low_waiting\n");
+    sprintf(buff, "cat /sys/module/multiflow_driver/parameters/low_waiting");
+    system(buff);
+    printf("devices_state\n");
+    sprintf(buff, "cat /sys/module/multiflow_driver/parameters/devices_state");
+    system(buff);
+    
+    
+    
 	for(i=0;i<minors;i++)
 	{
-		pthread_create(&tid1, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-		pthread_create(&tid2, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-        pthread_create(&tid3, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-		pthread_create(&tid4, NULL, the_thread_write_and_read, strdup(minors_list[i]));
-	
+		pthread_create(&tid1, NULL, the_thread_write_hi_block, strdup(minors_list[i]));
+        pthread_create(&tid2, NULL, the_thread_write_hi_block, strdup(minors_list[i]));
+        pthread_create(&tid3, NULL, the_thread_write_low_block, strdup(minors_list[i]));
+        pthread_create(&tid4, NULL, the_thread_write_low_block, strdup(minors_list[i]));
+        sleep(1);
+        printf("high_bytes\n");
+        sprintf(buff, "cat /sys/module/multiflow_driver/parameters/high_bytes");
+        system(buff);
+        printf("low_bytes\n");
+        sprintf(buff, "cat /sys/module/multiflow_driver/parameters/low_bytes");
+        system(buff);
+        printf("high_waiting\n");
+        sprintf(buff, "cat /sys/module/multiflow_driver/parameters/high_waiting");
+        system(buff);
+        printf("low_waiting\n");
+        sprintf(buff, "cat /sys/module/multiflow_driver/parameters/low_waiting");
+        system(buff);
+        printf("devices_state\n");
+        sprintf(buff, "cat /sys/module/multiflow_driver/parameters/devices_state");
+        system(buff);
+    
 		pthread_join(tid1,NULL);
 		pthread_join(tid2,NULL);
         pthread_join(tid3,NULL);
 		pthread_join(tid4,NULL);
 		sleep(2);
-
 	}
 	printf("\n\tTest complete \n");
 	printf("\t\tdone.\n");
-
     return 0;
 }

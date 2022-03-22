@@ -1,7 +1,10 @@
 CC=gcc
 CFLAGS=-lpthread
 
-ALL:a1 a2 a3
+ALL:simple_test concurrency_test enable_disable_test timeout_test write_and_read_test
+
+simple_test:
+	$(CC) -o $@ simple_test.c $(CFLAGS)
 
 concurrency_test:
 	$(CC) -o $@ concurrency_test.c $(CFLAGS)
@@ -16,7 +19,7 @@ write_and_read_test:
 	$(CC) -o $@ write_and_read_test.c $(CFLAGS)
 
 clean:
-	rm -rf *.o a1 a2 a3
+	rm -rf *.o simple_test concurrency_test enable_disable_test timeout_test write_and_read_test
 
 
 

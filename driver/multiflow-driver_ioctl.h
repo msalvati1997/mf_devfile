@@ -19,3 +19,5 @@
 #define DEFAULT_OP 1 //  blocking
 #define DEFAULT_TIMEOUT 2500 // milliseconds
 #define DEFAULT_STATE 0 // default state - ENABLE
+#define MAX_TIMEOUT 180000 // MAX TIMEOUT - 3min 
+
