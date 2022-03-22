@@ -394,7 +394,7 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
       PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
 			break;    
     case IOCTL_TIMER_TEST: //ONLY FOR TEST PURPOSE!! ..
-        session->jiffies= (20/10000000)*HZ;
+        session->jiffies= nsecs_to_jiffies(1);
         PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
         break;
 		default:
