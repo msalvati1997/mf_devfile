@@ -20,8 +20,8 @@ char buff[4096];
         printf("ERROR - WRONG PARAMETERS: usage -> prog pathname major minors\n");
         return -1;
     }
-    printf("\n----------Multi-flow device driver tester initialization started correctly.\n\n");
-    printf("\t...Creating %d minors for device %s (major %d)\n", minors, path, major);
+    printf("\n----------Multi-flow device driver tester initialization started correctly.----------\n\n");
+    printf("...Creating %d minors for device %s (major %d)\n", minors, path, major);
     for (i = 0; i < minors; i++)
     {
         sprintf(buff, "mknod %s%d c %d %i\n", path, i, major, i);
@@ -30,13 +30,13 @@ char buff[4096];
         minors_list[i] = malloc(32);
         strcpy(minors_list[i], buff);
     }
-    printf("\tSystem initialized. Minors list:\n");
+    printf("System initialized. Minors list:\n");
     for (i = 0; i < minors; i++)
     {
-        printf("\t\t%s\n", minors_list[i]);
+        printf("\t%s\n", minors_list[i]);
     }
 	printf("\n\nThis is a testing program. Starting tests...\n");
-	printf("\n\tTest  -   write and read in same session in different flow..\n");
+	printf("\nTest  -   write and read in same session in different flow..\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_and_read_hi, strdup(minors_list[i]));

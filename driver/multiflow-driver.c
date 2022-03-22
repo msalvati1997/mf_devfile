@@ -23,6 +23,18 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
 static void deferred_work(struct work_struct *work);
 
 
+//DEVICE DRIVER TABLE - OPERATIONS
+static struct file_operations fops = {
+  .owner = THIS_MODULE,
+  .write = dev_write,
+  .read = dev_read,
+  .open =  dev_open,
+  .release = dev_release,
+  .unlocked_ioctl = dev_ioctl
+};
+
+
+//DEFERRED WORK FUNCTION
 static void deferred_work(struct work_struct *work) {
    int minor;
    device *dev;
@@ -88,11 +100,10 @@ if (session->op==0) { //non blocking operation
         low_bytes[minor] = dev->low_valid_bytes;
         mutex_unlock(&(dev->mutex_low));
         wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
-        kfree(tw);
-      
+        kfree(tw); 
  }
  
-
+//OPEN
 static int dev_open(struct inode *inode, struct file *file) {
 
    int minor;
@@ -108,7 +119,7 @@ static int dev_open(struct inode *inode, struct file *file) {
          PERR("Error allocating memory\n");
          return -ENOMEM;
       }
-      //allocate new session with default timeout
+      //allocate new session with default parameters
       session->TIMEOUT=DEFAULT_TIMEOUT;
       session->op=DEFAULT_OP;
       session->prio=DEFAULT_PRIO;
@@ -123,7 +134,7 @@ static int dev_open(struct inode *inode, struct file *file) {
    }
 }
 
-
+//RELEASE
 static int dev_release(struct inode *inode, struct file *file) {
 
    int minor;
@@ -136,7 +147,7 @@ static int dev_release(struct inode *inode, struct file *file) {
 }
 
 
-
+//WRITE
 static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
 
   int minor = get_minor(filp);
@@ -175,7 +186,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
       }
   }
 
-  write_hi:
+  write_hi: //write to the high level stream
         *off = dev->hi_valid_bytes; //set the offset at the end of stream of high prio
         if(*off >= OBJECT_MAX_SIZE) {//offset too large
      	      mutex_unlock(&(dev->mutex_hi));
@@ -204,7 +215,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
         
         return 0;
 
-  write_low: 
+  write_low: //write to the low level stream
        *off = dev->low_valid_bytes; //set the offset at the end of stream of low prio
        deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC); //create the deferred_work struct for the deferred work
        bool result;
@@ -223,6 +234,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   return 0;
 }
 
+//READ
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
   int minor = get_minor(filp);
   int ret;
@@ -280,13 +292,13 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         }
        }
       }
-  read_hi :
+  read_hi : //read the high level stream
         *off = dev->hi_valid_bytes; 
         if(dev->hi_valid_bytes==0) {
-          PERR("NO BYTES IN DEVICE\n");
+          PERR("EMPTY DEVICE\n");
           return -1;
         }
-        if(len > dev->hi_valid_bytes) {
+        if(len > dev->hi_valid_bytes) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
               len=len-(len-dev->hi_valid_bytes);
         }
          PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
@@ -307,13 +319,13 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         }
         return del_bytes;
 
-  read_low: 
+  read_low:  //read the low level stream
         *off = dev->low_valid_bytes;
         if(dev->low_valid_bytes==0) {
-          PERR("NO BYTES IN DEVICE\n");
+          PERR("EMPTY DEVICE\n");
           return -1;
         }
-       if(len > dev->low_valid_bytes) {
+       if(len > dev->low_valid_bytes) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
               len=len - (len -dev->low_valid_bytes);
         } 
          PINFO("somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
@@ -335,7 +347,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
    return del_bytes;
 }
 
-
+//IOCTL
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg) {
 
   int minor = get_minor(filp);
@@ -393,7 +405,7 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
      	devices_state[minor]=1;
       PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
 			break;    
-    case IOCTL_TIMER_TEST: //ONLY FOR TEST PURPOSE!! ..
+    case IOCTL_TIMER_TEST: //ONLY FOR TEST PURPOSE!!!!! ..
         session->jiffies= nsecs_to_jiffies(1);
         PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
         break;
@@ -405,33 +417,20 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
 }
 
 
-
-static struct file_operations fops = {
-  .owner = THIS_MODULE,
-  .write = dev_write,
-  .read = dev_read,
-  .open =  dev_open,
-  .release = dev_release,
-  .unlocked_ioctl = dev_ioctl
-};
-
-
-
+//INIT
 static int __init multiflowdriver_init(void) {
 int i;
 	//initialize the drive internal state
 	for(i=0;i<MINORS;i++){
 		devices[i].hi_valid_bytes = 0;
 		devices[i].low_valid_bytes = 0;
-		devices[i].hi_prio_stream = NULL;
-		devices[i].low_prio_stream = NULL;
-	
+		devices[i].hi_prio_stream = NULL;  //dynamic memory
+		devices[i].low_prio_stream = NULL;  //dynamic memory 
    	mutex_init(&(devices[i].mutex_low));
     mutex_init(&(devices[i].mutex_hi));
-    init_waitqueue_head(&(devices[i].hi_queue));
+    init_waitqueue_head(&(devices[i].hi_queue)); //init the waitqueue
     init_waitqueue_head(&(devices[i].low_queue));
     ///initialize workqueue
-    /* max_active is 0, which means set as 256 for max_active. */
     char str[15];
     sprintf( str, "%s%d", "mfdev_wq_", i );
     devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);  //allocate workqueue for devices[i]
@@ -448,18 +447,16 @@ int i;
 
 }
 
+//EXIT
 static void __exit multiflowdriver_exit(void) {
 
 	int i;
 	for(i=0;i<MINORS;i++){
-//		free_page((unsigned long)devices[i].low_prio_stream);
-//		free_page((unsigned long)devices[i].hi_prio_stream);
     flush_workqueue(devices[i].wq);
     destroy_workqueue(devices[i].wq);
     kfree(devices[i].low_prio_stream);
     kfree(devices[i].hi_prio_stream);
 	}  
-	
 	unregister_chrdev(Major, DEVICE_NAME);
 	PINFO("%s: new device unregistered, it was assigned major number %d\n", Major);
 	return;

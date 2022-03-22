@@ -52,15 +52,49 @@ sudo ./install.sh
   - ./enable_disable_test.c a test for checking the settings of enable/disable param of a device 
 
 
-
-
 Module details
 ==================
-///
+
+Initially the module initializes all the data structures needed by the device driver. For each minor it initiates the high and low priority streams with the relative workqueue and waitqueue.
+
+During the module disassembly phase, all the driver structures are deallocated.
+
+
+Module's parameters :
+
+|  PARAM NAME 	|  TYPE  	|  DESCRIPTION  	|   	
+|---	|---	|---	|
+|   	devices_state |  array of int	| This param set the state of the device file. If set to enable, new session can be created. If set to disable, new session can't be created.    	| 
+|   low_waiting	|  array of int 	|   This param indicates the thread currently waiting on the waitqueue reserved to the process working to the low stream.	|   	
+|   hi_waiting	|   array of int	|    This param indicates the thread currently waiting on the waitqueue reserved to the process working to the hi stream.	|   	
+|   high_bytes	|   array of int	|    This param indicates the number of bytes present on the high prio stream	|  
+|   low_bytes	|   array of int	|    This param indicates the number of bytes present on the low prio stream|  
+
+- To see the module's parameters for device driver : 
+  ```bash
+  sudo cat /sys/module/multiflow_driver/parameters/#PARAM NAME
+   ```
+- To modify the ENABLE/DISABLE parameter for device driver : 
+   ```bash
+  sudo echo 0,0,1,.. /sys/module/multiflow_driver/parameters/device_state
+   ```
+   The enable and disable parameter can be easily changed via the IOCTL! 
+   
+   ```bash
+     #ENABLE DEVICE 
+     ioctl(fd, IOCTL_ENABLE);
+
+     #DISABLE DEVICE
+     ioctl(fd,IOCTL_DISABLE);
+
+   ```
+
+
+
 
 Driver details
 ==================
-///
+
 ## Device driver table
 
 | Driver file operations - fops |
@@ -71,12 +105,86 @@ Driver details
 | static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
 
 ## Data structure 
-///
+
+The multiflow-driver.h contains all the data structure of the device driver. 
+
+<p>The structure reserved for each device :</p>
+<pre><code>typedef struct _device{
+  struct mutex mutex_hi;
+  struct mutex mutex_low;
+  wait_queue_head_t hi_queue; //wait event queue for high pio requests
+  wait_queue_head_t low_queue;  //wait event queue for low prio requess
+  int hi_valid_bytes;
+  struct workqueue_struct *wq; //workqueue struct 
+  int low_valid_bytes;
+  char * hi_prio_stream; //the I/O node is a buffer in memory
+  char * low_prio_stream; //the I/O node is a buffer in memory
+} device;
+</code></pre>
+
+When a program opens a session it is necessary to allocate a private structure that could keep the parameters set by the user:
+
+-  PRIO : the priority of the working stream  (high prio/low prio)
+- OP : the type of operation (blocking/non blocking)
+- TIMEOUT : the timeout for the blocking operation 
+- JIFFIES : the timeout expressed in jiffies (HZ)
+
+
+<p>The structure reserved for each session opened by a program:</p>
+<pre><code>struct __session_data {
+  int prio;    //prio : 0 high prio - 1 low prio 
+  int op;      //type of operation :  0 non blocking operation - 1 blocking operation
+  int TIMEOUT; //timeout in millisecond
+  unsigned long jiffies; //timeout in jiffies (HZ)
+};
+typedef struct __session_data session_data_t;
+</code></pre>
+
+<p> For each workqueue it was necessary to implement a structure that could contain the data necessary for the write operations of the low priority streams.
+The structure reserved for each item of the worqueue :</p>
+<pre><code>struct __deferred_work_item {
+        struct file *filp;
+        char * bff;
+        size_t len; 
+        long long int off;   
+        struct work_struct	w;
+};
+typedef struct __deferred_work_item deferred_work_t;
+</code></pre>
+
 
 ## Waitqueue
-///
+
+For the implementation of synchronous blocking work it was necessary to use waitqueues.
+There are two different queues for each stream (low/high priority).
+The API was used to manage the queues:
+
+   ```bash
+      wait_event_timeout(wq, condition, timeout); 	 
+   ```
+
+The process is put to sleep until the lock is taken :
+
+   ```bash
+      int mutex_trylock (struct mutex * lock); 	
+   ```
+
+When the timeouot expired the process exit from the execution flow. 
+If the condition evaluates to true before the expiration of the timeout the process continues its flow of execution.
+
+
 ## Workqueue : implementation of delayed work
-///
+For the implementation of async deferred work it was necessary to work with workqueue.
+For each device is allocated one workqueue :
+```bash
+alloc_workqueue(fmt, flags, max_active, args...); 
+ ```
+It was decided to use this type of API because it allows you to manage a good level of concurrency.
+The following function was used to enqueue the __deferred_work_item (filled with op's vars) in the workqueue :
+```bash
+bool queue_work(struct workqueue_struct * wq, struct work_struct * work);
+ ```
+
 ## IOCTL - device file settings
 
 The device parameters of files can be manipulated by the ioctl() system call.
@@ -146,7 +254,4 @@ char * buff = malloc(sizeof(char)*7);
 read(fd,buff,7);
 ```
 
-
-Testing
-==================
 

@@ -20,8 +20,8 @@ char buff[4096];
         printf("ERROR - WRONG PARAMETERS: usage -> prog pathname major minors\n");
         return -1;
     }
-    printf("\n----------Multi-flow device driver tester initialization started correctly.\n\n");
-    printf("\t...Creating %d minors for device %s (major %d)\n", minors, path, major);
+    printf("\n----------Multi-flow device driver tester initialization started correctly----------\n\n");
+    printf("...Creating %d minors for device %s (major %d)\n", minors, path, major);
     for (i = 0; i < minors; i++)
     {
         sprintf(buff, "mknod %s%d c %d %i\n", path, i, major, i);
@@ -30,13 +30,13 @@ char buff[4096];
         minors_list[i] = malloc(32);
         strcpy(minors_list[i], buff);
     }
-    printf("\tSystem initialized. Minors list:\n");
+    printf("System initialized. Minors list:\n");
     for (i = 0; i < minors; i++)
     {
         printf("\t\t%s\n", minors_list[i]);
     }
 	printf("\n\nThis is a testing program. Starting tests...\n");
-	printf("\n\tPARAM TEST\n");
+	printf("\nPARAM TEST\n");
     printf("high_bytes\n");
     sprintf(buff, "cat /sys/module/multiflow_driver/parameters/high_bytes");
     system(buff);
@@ -62,19 +62,19 @@ char buff[4096];
         pthread_create(&tid3, NULL, the_thread_write_low_block, strdup(minors_list[i]));
         pthread_create(&tid4, NULL, the_thread_write_low_block, strdup(minors_list[i]));
         sleep(1);
-        printf("high_bytes\n");
+        printf("\nhigh_bytes\n");
         sprintf(buff, "cat /sys/module/multiflow_driver/parameters/high_bytes");
         system(buff);
-        printf("low_bytes\n");
+        printf("\nlow_bytes\n");
         sprintf(buff, "cat /sys/module/multiflow_driver/parameters/low_bytes");
         system(buff);
-        printf("high_waiting\n");
+        printf("\nhigh_waiting\n");
         sprintf(buff, "cat /sys/module/multiflow_driver/parameters/high_waiting");
         system(buff);
-        printf("low_waiting\n");
+        printf("\nlow_waiting\n");
         sprintf(buff, "cat /sys/module/multiflow_driver/parameters/low_waiting");
         system(buff);
-        printf("devices_state\n");
+        printf("\ndevices_state\n");
         sprintf(buff, "cat /sys/module/multiflow_driver/parameters/devices_state");
         system(buff);
     
@@ -84,7 +84,7 @@ char buff[4096];
 		pthread_join(tid4,NULL);
 		sleep(2);
 	}
-	printf("\n\tTest complete \n");
+	printf("\nTest complete \n");
 	printf("\t\tdone.\n");
     return 0;
 }

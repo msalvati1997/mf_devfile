@@ -21,7 +21,7 @@ char buff[4096];
         return -1;
     }
     printf("\n----------Multi-flow device driver tester initialization started correctly.\n\n");
-    printf("\t...Creating %d minors for device %s (major %d)\n", minors, path, major);
+    printf("..Creating %d minors for device %s (major %d)\n", minors, path, major);
     for (i = 0; i < minors; i++)
     {
         sprintf(buff, "mknod %s%d c %d %i\n", path, i, major, i);
@@ -36,7 +36,7 @@ char buff[4096];
         printf("\t\t%s\n", minors_list[i]);
     }
 	printf("\n\nThis is a testing program. Starting tests...\n");
-	printf("\n\tTest 1- write and read low flow blocking\n");
+	printf("\nTest 1- write and read low flow blocking\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_low_block, strdup(minors_list[i]));
@@ -50,9 +50,9 @@ char buff[4096];
 		sleep(1);
 
 	}
-	printf("\n\tTest 1 complete \n");
+	printf("\nTest 1 complete \n");
 
-    printf("\n\tTest 2- write and read high flow blocking\n");
+    printf("\nTest 2- write and read high flow blocking\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_hi_block, strdup(minors_list[i]));
@@ -66,10 +66,10 @@ char buff[4096];
 		sleep(1);
 
 	}
-	printf("\n\tTest 2 complete \n");
+	printf("\nTest 2 complete \n");
 
 
-    printf("\n\tTest 3- write and read low flow non blocking\n");
+    printf("\nTest 3- write and read low flow non blocking\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_low_nb, strdup(minors_list[i]));
@@ -83,9 +83,9 @@ char buff[4096];
 		sleep(1);
 
 	}
-	printf("\n\tTest 3 complete \n");
+	printf("\nTest 3 complete \n");
 
-     printf("\n\tTest 4- write and read high flow non blocking\n");
+     printf("\nTest 4- write and read high flow non blocking\n");
 	for(i=0;i<minors;i++)
 	{
 		pthread_create(&tid1, NULL, the_thread_write_hi_nb, strdup(minors_list[i]));
@@ -99,8 +99,8 @@ char buff[4096];
 		sleep(1);
 
 	}
-	printf("\n\tTest 3 complete \n");
-	printf("\t\tdone.\n");
+	printf("\nTest 3 complete \n");
+	printf("\tdone.\n");
 
     return 0;
 }

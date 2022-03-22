@@ -21,7 +21,7 @@ void * the_thread_timeout_expired_high(void* path){
     char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data,"_");
-    printf("Writing on high priority stream...%s \n",buff);
+    printf("Writing on high priority stream...%s \n\n",buff);
 	write(fd,buff,strlen(buff));
 	write(fd,buff,strlen(buff));
 	write(fd,buff,strlen(buff));
@@ -34,7 +34,7 @@ void * the_thread_timeout_expired_high(void* path){
     char * buff2 = malloc(sizeof(char)*8);
 
 	read(fd,buff2,8);
-	printf("Read from high priority stream.. %s\n", buff2);
+	printf("Read from high priority stream.. %s\n\n", buff2);
 	return NULL;
 }
 
@@ -60,7 +60,7 @@ void * the_thread_timeout_expired_low(void* path){
     char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data,"_");
-    printf("Writing on low priority stream...%s \n",buff);
+    printf("Writing on low priority stream...%s\n\n",buff);
 	write(fd,buff,strlen(buff));
 	write(fd,buff,strlen(buff));
 	write(fd,buff,strlen(buff));
@@ -79,7 +79,7 @@ void * the_thread_timeout_expired_low(void* path){
 	read(fd,buff2,8);
 	
 
-	printf("Read from low priority stream.. %s\n", buff2);
+	printf("Read from low priority stream.. %s\n\n", buff2);
 	return NULL;
 }
 int main(int argc, char** argv)
@@ -102,8 +102,8 @@ char buff[4096];
         printf("ERROR - WRONG PARAMETERS: usage -> prog pathname major minors\n");
         return -1;
     }
-    printf("\n----------Multi-flow device driver tester initialization started correctly.\n\n");
-    printf("\t...Creating %d minors for device %s (major %d)\n", minors, path, major);
+    printf("\n----------Multi-flow device driver tester initialization started correctly----------.\n\n");
+    printf("...Creating %d minors for device %s (major %d)\n", minors, path, major);
     for (i = 0; i < minors; i++)
     {
         sprintf(buff, "mknod %s%d c %d %i\n", path, i, major, i);
@@ -112,13 +112,13 @@ char buff[4096];
         minors_list[i] = malloc(32);
         strcpy(minors_list[i], buff);
     }
-    printf("\tSystem initialized. Minors list:\n");
+    printf("System initialized. Minors list:\n");
     for (i = 0; i < minors; i++)
     {
         printf("\t\t%s\n", minors_list[i]);
     }
 	printf("\n\nThis is a testing program. Starting tests...\n");
-	printf("\n\tTest - timeout expired..\n");
+	printf("\nTest - timeout expired..\n");
 
 	for(i=0;i<minors;i++)
 	{
@@ -133,7 +133,7 @@ char buff[4096];
 		sleep(1);
 
 	}
-	printf("\t\tdone.\n");
+	printf("\ndone.\n");
 
     return 0;
 }
