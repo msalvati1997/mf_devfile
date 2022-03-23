@@ -13,7 +13,7 @@
   - [Waitqueue](#waitqueue)
   - [Workqueue : implementation of delayed work](#workqueue--implementation-of-delayed-work)
   - [IOCTL](#ioctl)
-- [fops](#fops)
+- [Fops](#fops)
   - [Open](#open)
   - [Write](#write)
   - [Read](#read)
@@ -216,7 +216,7 @@ Some macros have been created that make it easier to set parameters (driver/mult
 | IOCTL_ENABLE | Allows to set the device state to enable. | 
 | IOCTL_DISABLE | Allows to set the device state to disable. | 
 
-fops 
+Fops 
 =======================
 
 
