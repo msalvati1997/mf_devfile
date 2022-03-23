@@ -473,7 +473,7 @@ static void __exit multiflowdriver_exit(void) {
 module_init(multiflowdriver_init);
 module_exit(multiflowdriver_exit);
 
-module_param_array(devices_state,int,NULL,S_IWUSR|S_IRUSR); //Devices state (0 = disabled - 1 = enabled)
+module_param_array(devices_state,int,NULL,S_IWUSR|S_IRUSR); //Devices state (0 = enabled - 1 = disable)
 module_param_array(high_bytes,int,NULL,S_IRUGO);   //# valid bytes are present in every high priority flow
 module_param_array(low_bytes,int,NULL,S_IRUGO); //#valid bytes are present in every low priority flow
 module_param_array(high_waiting, int,NULL,S_IRUGO);   //#threads waiting on high priority stream for every device
