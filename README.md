@@ -1,19 +1,36 @@
   
 
-Multi-flow device file
+# Multi-flow device file
+
+- [Multi-flow device file](#multi-flow-device-file)
+- [Project's description](#projects-description)
+- [Project installation and organization](#project-installation-and-organization)
+  - [Project's file](#projects-file)
+- [Module details](#module-details)
+  - [Parameters](#parameters)
+- [Driver details](#driver-details)
+  - [Data structure](#data-structure)
+  - [Waitqueue](#waitqueue)
+  - [Workqueue : implementation of delayed work](#workqueue--implementation-of-delayed-work)
+  - [IOCTL](#ioctl)
+- [fops](#fops)
+  - [Open](#open)
+  - [Write](#write)
+  - [Read](#read)
+  - [Release](#release)
+- [Usage : simple example](#usage--simple-example)
+- [Author](#author)
+- [License](#license)
+
+
+ Project's description
 ==================
-
-## Martina Salvati
-Advanced Operating Systems - MS Degree in Computer Engineering - Academic Year 2021/2022
-
-
-## Project's description
 
 This project is related to a Linux device driver implementing low and high priority flows of data. Through an open session to the device file a thread can read/write data segments. The data delivery follows a First-in-First-out policy along each of the two different data flows (low and high priority). After read operations, the read data disappear from the flow. Also, the high priority data flow must offer synchronous write operations while the low priority data flow must offer an asynchronous execution (based on delayed work) of write operations, while still keeping the interface able to synchronously notify the outcome. Read operations are all executed synchronously. The device driver should support 128 devices corresponding to the same amount of minor numbers.
 
-  
 
-## Installation
+Project installation and organization
+==================
 
 1. Clone this repo
 
@@ -32,7 +49,8 @@ git clone https://github.com/msalvati1997/mf_devfile.git
 cd ~/driver
 sudo ./install.sh
 ```
-## Project's file
+ Project's file
+-----------------------------
   
   The directory ./driver contains all files directly used in the driver's logic : 
 
@@ -61,7 +79,8 @@ In open phase, the module initializes all the data structures needed by the devi
 During the module exit phase,  the driver's structures are deallocated.
 
 
-Module's parameters :
+Parameters
+-----------------------------
 
 |  PARAM NAME 	|  TYPE  	|  DESCRIPTION  	|   	
 |---	|---	|---	|
@@ -97,7 +116,7 @@ Driver details
 ==================
 
 
-## Data structure 
+Data structure 
 -----------------------------
 The multiflow-driver.h contains all the data structure of the device driver. 
 
@@ -146,7 +165,7 @@ typedef struct __deferred_work_item deferred_work_t;
 </code></pre>
 
 
-## Waitqueue
+Waitqueue
 -----------------------------
 
 To implementate the synchronous blocking work it was necessary to use waitqueues.
@@ -167,7 +186,7 @@ When the timeouot expired the process exit from the execution flow.
 If the condition evaluates to true before the expiration of the timeout the process continues its flow of execution.
 
 
-## Workqueue : implementation of delayed work
+Workqueue : implementation of delayed work
 -----------------------------
 To implementate the async deferred work it was necessary to work with workqueues,
 For each device is allocated one workqueue :
@@ -180,7 +199,7 @@ The following function it's used to enqueue the __deferred_work_item (filled wit
 bool queue_work(struct workqueue_struct * wq, struct work_struct * work);
  ```
 
-## IOCTL - device file settings
+ IOCTL 
 -----------------------------
 The device parameters of files can be manipulated by the ioctl() system call.
 
@@ -197,11 +216,10 @@ Some macros have been created that make it easier to set parameters (driver/mult
 | IOCTL_ENABLE | Allows to set the device state to enable. | 
 | IOCTL_DISABLE | Allows to set the device state to disable. | 
 
-FOPS
+fops 
 =======================
 
-## Device driver table
------------------------------
+
 | Driver file operations - fops |
 |---|
 | static int dev_open(struct inode *, struct file *);
@@ -213,7 +231,7 @@ Open
  -----------------------------
 The device opening operation allocates a private session structure. The allocation of the structure is allowed only if the device_state of the object is set to ENABLE, otherwise (DISABLE) it is not possible to create new sessions. 
 
-Writes
+Write
  -----------------------------
 The write operation of n bytes involves the allocation of n bytes of memory. 
 Memory is dynamically allocated through the functions:
@@ -245,7 +263,7 @@ The write operation has a different behavior for each session's setting paramete
 
   
 
-Reads
+Read
  -----------------------------
   Readings are performed in FIFO mode from left to right. When a read is performed then the readed bytes are removed from the stream.
 
@@ -287,8 +305,8 @@ Release
  -----------------------------
 This operation is used to close a specific device and to deallocate the session's private data. 
 
-Usage
- -----------------------------
+Usage : simple example
+ =======================
 
 
 1. Open device :
@@ -327,5 +345,11 @@ write(fd,buff,strlen(buff));
 char * buff = malloc(sizeof(char)*7);
 read(fd,buff,7);
 ```
+Author
+=======================
+- [Martina Salvati](https://github.com/msalvati1997) 
 
 
+License 
+=======================
+GPL 
