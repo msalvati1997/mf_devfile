@@ -222,10 +222,11 @@ DRIVER OPERATION
 
 | Driver file operations - fops |
 |---|
-| static int dev_open(struct inode *, struct file *);
-| static int dev_release(struct inode *, struct file *);
-| static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
-| static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
+| static int dev_open(struct inode *, struct file *);|
+| static int dev_release(struct inode *, struct file *);|
+| static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);|
+|static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off);|
+| static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);|
 
 Open
  -----------------------------
