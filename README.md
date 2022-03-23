@@ -183,7 +183,11 @@ The process is put to sleep until the lock is taken :
    ```
 
 When the timeouot expired the process exit from the execution flow. 
-If the condition evaluates to true before the expiration of the timeout the process continues its flow of execution.
+If the condition evaluates to true before the expiration of the timeout the process continues its flow of execution.  In order to wake up the processes if mutex_unlock(struct mutex *lock) : 
+
+ ```bash
+void wake_up(struct wait_queue_head);
+   ```
 
 
 Workqueue : implementation of delayed work
@@ -276,7 +280,7 @@ unsigned long copy_to_user(void __user * to, const void * from, unsigned long n)
 To manage memory deallocation after read : 
 
 ```bash
-void *memmove(void *dest, const void *src, size_t n); // used to copyes n-read bytes 
+void *memmove(void *dest, const void *src, size_t n); // used to copyes n-read bytes  - shift to left the streams
  ```
 
  ```bash
