@@ -36,28 +36,29 @@ sudo ./install.sh
   
   The directory ./driver contains all files directly used in the driver's logic : 
 
-  -  ./multiflow-driver.c contains the implementation of the logic of the driver operations
-  -  ./multiflow-driver.h contains the specification of the data structure used in the project 
-  - ./multiflow-driver_ioctl.h contains the macro used for ioctl() operation 
-  - ./install.sh is the install script of the modules
+  -  ./multiflow-driver.c : implementation of the logic of the driver operations
+  -  ./multiflow-driver.h : specification of the data structures used in the project 
+  - ./multiflow-driver_ioctl.h : contains the macros used for ioctl() operation 
+  - ./install.sh : the install script of the modules
   
   The directory ./test contains all files directly used in the test's logic : 
   
-  - ./test.h containts all the functions and data structure used for test
-  - ./simple_test.c a simple test of write and read in different session
-  - ./write_and_read_test.c a simple test of write and read in same session
-  - ./concurrency_test.c a test for concurrent writes andr eads
-  - ./param_test.c a simple test for checking the parameters of a device 
-  - ./timeout_test.c a simple test for checking the expiration of timeout 
-  - ./enable_disable_test.c a test for checking the settings of enable/disable param of a device 
+  - ./test.h : contains all the functions and data structure used for test
+  - ./simple_test.c : test of write and read in different session
+  - ./write_and_read_test.c : test of write and read in same session
+  - ./concurrency_test.c : test of concurrent writes and reads
+  - ./param_test.c : test of device params
+  - ./timeout_test.c : test of timeout's expiration
+  - ./enable_disable_test.c test of enable/disable param 
+  - ./test.sh is the script used to call the test function
 
 
 Module details
 ==================
 
-Initially the module initializes all the data structures needed by the device driver. For each minor it initiates the high and low priority streams with the relative workqueue and waitqueue.
+In open phase, the module initializes all the data structures needed by the device driver. For each minor (device file) initializes the high and low priority streams with the relative workqueue and waitqueue.
 
-During the module disassembly phase, all the driver structures are deallocated.
+During the module exit phase,  the driver's structures are deallocated.
 
 
 Module's parameters :
@@ -102,8 +103,8 @@ The multiflow-driver.h contains all the data structure of the device driver.
 
 <p>The structure reserved for each device :</p>
 <pre><code>typedef struct _device{
-  struct mutex mutex_hi;
-  struct mutex mutex_low;
+  struct mutex mutex_hi;  //synchronizer of high prio stream
+  struct mutex mutex_low; //synchronizer of low prio stream
   wait_queue_head_t hi_queue; //wait event queue for high pio requests
   wait_queue_head_t low_queue;  //wait event queue for low prio requess
   int hi_valid_bytes;
@@ -114,7 +115,7 @@ The multiflow-driver.h contains all the data structure of the device driver.
 } device;
 </code></pre>
 
-When a program opens a session it is necessary to allocate a private structure that could keep the parameters set by the user:
+When a program opens a session, it'a necessary to allocate a private structure that could keep the parameters set by the user:
 
 -  PRIO : the priority of the working stream  (high prio/low prio)
 - OP : the type of operation (blocking/non blocking)
@@ -132,7 +133,7 @@ When a program opens a session it is necessary to allocate a private structure t
 typedef struct __session_data session_data_t;
 </code></pre>
 
-<p> For each workqueue it was necessary to implement a structure that could contain the data necessary for the write operations of the low priority streams.
+<p> For each workqueue it's necessary to implement a structure that could contain the data necessary for the write operations of the low priority stream.
 The structure reserved for each item of the worqueue :</p>
 <pre><code>struct __deferred_work_item {
         struct file *filp;
@@ -148,7 +149,7 @@ typedef struct __deferred_work_item deferred_work_t;
 ## Waitqueue
 -----------------------------
 
-For the implementation of synchronous blocking work it was necessary to use waitqueues.
+To implementate the synchronous blocking work it was necessary to use waitqueues.
 There are two different queues for each stream (low/high priority).
 The API was used to manage the queues:
 
@@ -168,13 +169,13 @@ If the condition evaluates to true before the expiration of the timeout the proc
 
 ## Workqueue : implementation of delayed work
 -----------------------------
-For the implementation of async deferred work it was necessary to work with workqueue.
+To implementate the async deferred work it was necessary to work with workqueues,
 For each device is allocated one workqueue :
 ```bash
 alloc_workqueue(fmt, flags, max_active, args...); 
  ```
 It was decided to use this type of API because it allows you to manage a good level of concurrency.
-The following function was used to enqueue the __deferred_work_item (filled with op's vars) in the workqueue :
+The following function it's used to enqueue the __deferred_work_item (filled with op's vars) in the workqueue :
 ```bash
 bool queue_work(struct workqueue_struct * wq, struct work_struct * work);
  ```
@@ -210,7 +211,7 @@ FOPS
 
 Open
  -----------------------------
-The device opening operation allocates the private session structure. The allocation of the structure is allowed only if the device_state of the object is set to ENABLE (0), otherwise (DISABLE) it is not possible to create new sessions. 
+The device opening operation allocates a private session structure. The allocation of the structure is allowed only if the device_state of the object is set to ENABLE, otherwise (DISABLE) it is not possible to create new sessions. 
 
 Writes
  -----------------------------
@@ -246,7 +247,7 @@ The write operation has a different behavior for each session's setting paramete
 
 Reads
  -----------------------------
-  Readings are performed in FIFO mode from left to right. When a read is performed then the bytes read are removed from the stream.
+  Readings are performed in FIFO mode from left to right. When a read is performed then the readed bytes are removed from the stream.
 
 To copy data from kernel space to user space:  
   ```bash
