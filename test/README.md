@@ -3,7 +3,7 @@
 
 - [TEST](#test)
 - [Execution of test](#execution-of-test)
-  - [Test 1 : simple test](#test-1--simple-test)
+  - [Test 1 : Simple test](#test-1--simple-test)
   - [Test 2 : Write and read test](#test-2--write-and-read-test)
   - [Test 3 : Concurrency test](#test-3--concurrency-test)
   - [Test 4 : Timeout test](#test-4--timeout-test)
