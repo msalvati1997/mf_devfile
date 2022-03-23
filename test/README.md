@@ -21,7 +21,7 @@ sudo ./test.sh
 ```
 A dialog box will open - it  will guide the user through the selection of command inputs.
 
-## Test 1 : simple test 
+## Test 1 : Simple test 
   This is a simple test in which a user tries a write and a read operation in different streams (high prio and low prio) and different session. 
 
 ## Test 2 : Write and read test 
