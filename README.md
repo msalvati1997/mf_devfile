@@ -4,7 +4,7 @@ Multi-flow device file
 ==================
 
 ## Martina Salvati
-Advanced Operating Systems - MS Degree in Computer Engineering - Academic Year 2021/202
+Advanced Operating Systems - MS Degree in Computer Engineering - Academic Year 2021/2022
 
 
 ## Project's description
@@ -47,7 +47,7 @@ sudo ./install.sh
   - ./simple_test.c a simple test of write and read in different session
   - ./write_and_read_test.c a simple test of write and read in same session
   - ./concurrency_test.c a test for concurrent writes andr eads
-  - ./param_test.c a simple test for checking of settings of parameters
+  - ./param_test.c a simple test for checking the parameters of a device 
   - ./timeout_test.c a simple test for checking the expiration of timeout 
   - ./enable_disable_test.c a test for checking the settings of enable/disable param of a device 
 
@@ -95,17 +95,9 @@ Module's parameters :
 Driver details
 ==================
 
-## Device driver table
-
-| Driver file operations - fops |
-|---|
-| static int dev_open(struct inode *, struct file *);
-| static int dev_release(struct inode *, struct file *);
-| static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
-| static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
 
 ## Data structure 
-
+-----------------------------
 The multiflow-driver.h contains all the data structure of the device driver. 
 
 <p>The structure reserved for each device :</p>
@@ -154,6 +146,7 @@ typedef struct __deferred_work_item deferred_work_t;
 
 
 ## Waitqueue
+-----------------------------
 
 For the implementation of synchronous blocking work it was necessary to use waitqueues.
 There are two different queues for each stream (low/high priority).
@@ -174,6 +167,7 @@ If the condition evaluates to true before the expiration of the timeout the proc
 
 
 ## Workqueue : implementation of delayed work
+-----------------------------
 For the implementation of async deferred work it was necessary to work with workqueue.
 For each device is allocated one workqueue :
 ```bash
@@ -186,7 +180,7 @@ bool queue_work(struct workqueue_struct * wq, struct work_struct * work);
  ```
 
 ## IOCTL - device file settings
-
+-----------------------------
 The device parameters of files can be manipulated by the ioctl() system call.
 
 Some macros have been created that make it easier to set parameters (driver/multiflow-driver_ioctl.h)
@@ -205,13 +199,23 @@ Some macros have been created that make it easier to set parameters (driver/mult
 FOPS
 =======================
 
+## Device driver table
+-----------------------------
+| Driver file operations - fops |
+|---|
+| static int dev_open(struct inode *, struct file *);
+| static int dev_release(struct inode *, struct file *);
+| static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
+| static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
+
 Open
  -----------------------------
 The device opening operation allocates the private session structure. The allocation of the structure is allowed only if the device_state of the object is set to ENABLE (0), otherwise (DISABLE) it is not possible to create new sessions. 
 
 Writes
  -----------------------------
-The write operation of n bytes involves the allocation of n bytes of memory. Memory is dynamically allocated through the functions:
+The write operation of n bytes involves the allocation of n bytes of memory. 
+Memory is dynamically allocated through the functions:
 
 ```bash
 void * krealloc(const void * p, size_t new_size, gfp_t flags); //used to add new bytes
@@ -221,14 +225,15 @@ void * krealloc(const void * p, size_t new_size, gfp_t flags); //used to add new
 void *memset(void *s, int c, size_t n);//used to initialize the memory allocated
  ```
 
+To copy data from user space to kernel space : 
 ```bash
- ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
+unsigned long  copy_from_user(void * to, const void __user * from, unsigned long n);
  ```
-The write operation has a different behavior for each session parameter.
+The write operation has a different behavior for each session's setting parameters :
 
 * **HIGH PRIO STREAM** :
     * **BLOCKING OPERATION**
-      The blocking operations work with the waitqueues. The process waits as long as the condition is met and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
+      The blocking operations work with the waitqueues. The process waits as long as the condition is true and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
     * **NON BLOCKING OPERATION** : The non blocking operation work with the mutex_trylock API. It is not blocking: if the resource is busy, control returns to the user.
 
     
@@ -243,23 +248,26 @@ Reads
  -----------------------------
   Readings are performed in FIFO mode from left to right. When a read is performed then the bytes read are removed from the stream.
 
+To copy data from kernel space to user space:  
+  ```bash
+unsigned long copy_to_user(void __user * to, const void * from, unsigned long n); 
+ ```
+
+To manage memory deallocation after read : 
+
+```bash
+void *memmove(void *dest, const void *src, size_t n); // used to copyes n-read bytes 
+ ```
+
+ ```bash
+void *memset(void *s, int c, size_t n);//clear the last bytes
+ ```
 
   ```bash
 void * krealloc(const void * p, size_t new_size, gfp_t flags); //used to remove readed bytes
  ```
- ```bash
-void *memset(void *s, int c, size_t n);//used to initialize the memory allocated
- ```
+Read operation depends on the priority of the working stream: 
 
-```bash
-         memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
- ```
-
-
-```bash
-         memset(dev
- ```
-  
   * **HIGH PRIO STREAM** :
     * **BLOCKING OPERATION**
       The blocking operations work with the waitqueues. The process waits as long as the condition is met and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
@@ -271,11 +279,12 @@ void *memset(void *s, int c, size_t n);//used to initialize the memory allocated
        The blocking operations work with the waitqueues. The process waits as long as the condition is met and the timeout has not expired. The condition is about taking the lock (reserved of the high level stream) in order to do the operation. 
     * **NON BLOCKING OPERATION** : The non blocking operation work with the mutex_trylock API. It is not blocking: if the resource is busy, control returns to the user.
 
-  
+In this case the workqueue are not used : the read operation is always synchronized. 
+
 
 Release 
  -----------------------------
-
+This operation is used to close a specific device and to deallocate the session's private data. 
 
 Usage
  -----------------------------
