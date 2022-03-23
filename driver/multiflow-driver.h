@@ -14,6 +14,7 @@
 #include<linux/moduleparam.h>
 #include<linux/sched.h>
 #include<linux/semaphore.h>
+#include<linux/errno.h>
 #include<linux/types.h>
 #include<linux/uaccess.h>
 #include<linux/wait.h>

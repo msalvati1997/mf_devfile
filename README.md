@@ -216,7 +216,7 @@ Some macros have been created that make it easier to set parameters (driver/mult
 | IOCTL_ENABLE | Allows to set the device state to enable. | 
 | IOCTL_DISABLE | Allows to set the device state to disable. | 
 
-Fops 
+DRIVER OPERATION 
 =======================
 
 

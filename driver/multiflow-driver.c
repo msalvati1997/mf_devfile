@@ -19,6 +19,7 @@ static int dev_open(struct inode *, struct file *);
 static int dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
+static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off);
 //deferred work 
 static void deferred_work(struct work_struct *work);
 
@@ -159,7 +160,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
    if (session->prio == 0) { //high priority flow 
       if(!mutex_trylock(&dev->mutex_hi)) {
          PERR("[Non-Blocking write high prio]=> PID: %d; NAME: %s - RESOURCE BUSY\n", current->pid, current->comm);
-         return -1;
+         return -EAGAIN;
       } else {
           goto write_hi;
       }
@@ -173,7 +174,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
         if (!ret) {
            PINFO("%s - command timed out - \n", __func__);
            __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           return -1;
+           return -ETIMEDOUT;
         } else {
            __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
           goto write_hi;
@@ -205,6 +206,9 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
            dev->hi_prio_stream = krealloc(dev->hi_prio_stream,(dev->hi_valid_bytes+len),GFP_KERNEL);
            memset(dev->hi_prio_stream + dev->hi_valid_bytes ,0,len);
            ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
+           if(ret>0) {
+             dev->hi_prio_stream = krealloc(dev->hi_prio_stream,dev->hi_valid_bytes-ret,GFP_KERNEL); //if copy from user return>0 - n bytes not readed
+           }
            *off += (len - ret);
            dev->hi_valid_bytes = *off;           
            PDEBUG("after write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
@@ -221,9 +225,12 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
        bool result;
        data->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
        ret = copy_from_user(data->bff, buff, len);
+       if (ret>0) {
+         data->bff=krealloc(data->bff, data->bff-ret,GFP_ATOMIC);
+       }
        data->off=*off;
        data->filp=filp;
-       data->len=len;
+       data->len=len-ret;
        INIT_WORK(&data->w, deferred_work);  
        result = queue_work(dev->wq, &data->w); //enqueue the deferred work
  	  	 if (result == false)  {
@@ -247,14 +254,14 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
      if(session->prio==0 ) {  //high priority stream 
            if(!mutex_trylock(&dev->mutex_hi)) {  //try ONCE to get the lock, not blocking
               PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-              return -1;// return to the caller   
+              return -EAGAIN;// return to the caller   
       } else {
           goto read_hi;
       }
      } else {
          if(!mutex_trylock(&dev->mutex_low)) { //try ONCE to get the lock, not blocking
           PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-          return -1;// return to the caller   
+          return -EAGAIN;// return to the caller   
       } else {
           goto read_low;
       }
@@ -266,7 +273,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         if (!ret) { //TIMEOUT!!
            PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           return -1;
+           return -ETIMEDOUT;
         }
         else {
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
@@ -282,7 +289,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         if (!ret) { //waiting until the condition if true OR timeout expired 
           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
             PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
-            return -1;
+            return -ETIMEDOUT;
         } else {
          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
          goto read_low;
