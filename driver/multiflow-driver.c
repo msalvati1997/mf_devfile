@@ -76,7 +76,13 @@ if (session->op==0) { //non blocking operation
         }
      }
   deferred_write: 
- 
+ if((tw->off) >= OBJECT_MAX_SIZE) {//offset too large  (limit memory device.)
+   	      PERR("offset too large : %d\n", (tw-> off));
+          mutex_unlock(&dev->mutex_low);
+          wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
+          kfree(tw);
+          return;
+        }
    if((tw->off) > dev->low_valid_bytes) {//offset bwyond the current stream size
     	   PERR("out of stream resources - %d off %d low valid bytes\n", (tw->off), dev ->low_valid_bytes);
          mutex_unlock(&dev->mutex_low);
@@ -183,7 +189,12 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
 
   write_hi: //write to the high level stream
         *off = dev->hi_valid_bytes; //set the offset at the end of stream of high prio
-       
+       if(*off >= OBJECT_MAX_SIZE) {//offset too large  //limit of device...
+     	      mutex_unlock(&(dev->mutex_hi));
+            wake_up(&(dev->hi_queue));//wake up the waiting thread on the high prio stream
+            PERR("No space left on device - Offset : %ld\n", *off);
+	          return -ENOSPC;//no space left on device
+           }
         if(*off > dev->hi_valid_bytes) {//offset bwyond the current stream size
   	        mutex_unlock(&(dev->mutex_hi));
             wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
