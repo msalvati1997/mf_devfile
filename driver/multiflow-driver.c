@@ -90,7 +90,6 @@ if (session->op==0) { //non blocking operation
          kfree(tw);
          return;
        }  
-     if((OBJECT_MAX_SIZE - (tw->off)) < (tw->len)) (tw->len) = OBJECT_MAX_SIZE - (tw->off); {
         PDEBUG("before deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
         (tw->off)  = dev->low_valid_bytes;
         dev->low_prio_stream = krealloc(dev->low_prio_stream,(dev->low_valid_bytes + tw->len),GFP_ATOMIC);
@@ -103,7 +102,7 @@ if (session->op==0) { //non blocking operation
         mutex_unlock(&(dev->mutex_low));
         wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
         kfree(tw); 
-     }
+     
  }
  
 //OPEN
@@ -203,7 +202,6 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
             PERR("Out of stream resources : OFF %ld, HIGH VALID BYTES %d\n",*off, dev->hi_valid_bytes);
  	          return -ENOSR;
           }  
-       if((OBJECT_MAX_SIZE - *off) < len) len = OBJECT_MAX_SIZE - *off; {
            PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
            PDEBUG("before write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
            dev->hi_prio_stream = krealloc(dev->hi_prio_stream,(dev->hi_valid_bytes+len),GFP_KERNEL);
@@ -219,7 +217,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
            mutex_unlock(&(dev->mutex_hi)); 
            wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
            return len-ret;
-       }
+       
         return 0;
 
   write_low: //write to the low level stream
