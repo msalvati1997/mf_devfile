@@ -81,7 +81,7 @@ typedef struct _device{
 
 #define MINORS 128
 device devices[MINORS];
-#define OBJECT_MAX_SIZE  (4096) just one page or whatever the programmer prefer!!  
+#define OBJECT_MAX_SIZE  (4096) // just one page or whatever the programmer prefer!!  
 
 
 //param array
