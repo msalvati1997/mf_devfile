@@ -7,6 +7,15 @@ Description		:		LINUX MULTI_FLOW DEVICE DRIVER
 ===============================================================================
 */
 
+/*
+cose da fare : 
+- la write non deve ritornare sempre 0
+- la deferred work avviene sempre 
+- levare le ripetizioni del codice 
+- copy_to_user nella write non deve avvenire in modo sincronizzante 
+- wake_up selettiva e non globale 
+*/
+
 #define EXPORT_SYMTAB
 #include "multiflow-driver.h"
 
@@ -18,12 +27,14 @@ MODULE_DESCRIPTION("Multi-flow device file.");
 static int dev_open(struct inode *, struct file *);
 static int dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
-static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg);
-static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off);
+static long dev_ioctl(struct file *, unsigned int , unsigned long );
+static ssize_t dev_read(struct file *, char *, size_t , loff_t *);
 //deferred work 
-static void deferred_work(struct work_struct *work);
+static void deferred_work(struct work_struct *);
 
-
+void call_deferred_work(int, char **, int, int, struct file **);
+void sync_read(int , int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *);
+void sync_write(int ,int , int , char ** ) ;
 //DEVICE DRIVER TABLE - OPERATIONS
 static struct file_operations fops = {
   .owner = THIS_MODULE,
@@ -34,7 +45,6 @@ static struct file_operations fops = {
   .unlocked_ioctl = dev_ioctl
 };
 
-
 //DEFERRED WORK FUNCTION
 static void deferred_work(struct work_struct *work) {
    int minor;
@@ -43,66 +53,21 @@ static void deferred_work(struct work_struct *work) {
    PINFO("[Deferred work]=> PID: %d; NAME: %s\n", current->pid, current->comm);
    deferred_work_t *tw;
    tw = container_of(work, deferred_work_t, w);
-   if (!tw) {
-		PERR("%s: Null pointer!!\n", __func__);
-    return;
- 	  }
    minor = get_minor(tw->filp);
-   dev = devices + minor;
-   session_data_t *session = (tw->filp)->private_data;
-
-
-if (session->op==0) { //non blocking operation
-        if(!mutex_trylock(&dev->mutex_low)) { //non blocking 
-         PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-         return;
-        } else {
-          goto deferred_write;
-        } 
- } else { //blocking operation
-     __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
-      ret = wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies);
-      if (!ret) { //evaluate to true after timeout or evaluate to false before timeout 
-           PINFO("%s - command timed out - \n", __func__);
-           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           return;
-      }
-      else {
-          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
-          goto deferred_write;
-      }
-      if(!mutex_is_locked(&(dev->mutex_low))) {
-          wake_up(&(dev->low_queue)); //if nobody call the wake up 
-        }
-     }
-  deferred_write: 
- if((tw->off) >= OBJECT_MAX_SIZE) {//offset too large  (limit memory device.)
-   	      PERR("offset too large : %d\n", (tw-> off));
-          mutex_unlock(&dev->mutex_low);
-          wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
-          kfree(tw);
-          return;
-        }
-   if((tw->off) > dev->low_valid_bytes) {//offset bwyond the current stream size
-    	   PERR("out of stream resources - %d off %d low valid bytes\n", (tw->off), dev ->low_valid_bytes);
-         mutex_unlock(&dev->mutex_low);
-         wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
-         kfree(tw);
-         return;
-       }  
-        PDEBUG("before deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
-        (tw->off)  = dev->low_valid_bytes;
-        dev->low_prio_stream = krealloc(dev->low_prio_stream,(dev->low_valid_bytes + tw->len),GFP_ATOMIC);
-        memset(dev->low_prio_stream + dev->low_valid_bytes ,0,tw->len);
-        strncat(&(dev->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
-        tw->off +=tw->len;
-        dev->low_valid_bytes = (tw->off); 
-        PDEBUG("after deferred-write LOW LEVEL STREAM : %s\n", dev->low_prio_stream);
-        low_bytes[minor] = dev->low_valid_bytes;
-        mutex_unlock(&(dev->mutex_low));
-        wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
-        kfree(tw); 
-     
+   dev = devices + minor;   
+   mutex_lock(&dev->mutex_low);
+   PDEBUG("[Deferred work]=> :before write : %s\n", dev->low_prio_stream);
+   (tw->off)  = dev->low_valid_bytes;
+   dev->low_prio_stream = krealloc(dev->low_prio_stream,(dev->low_valid_bytes + tw->len),GFP_ATOMIC);
+   memset(dev->low_prio_stream + dev->low_valid_bytes ,0,tw->len);
+   strncat(&(dev->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
+   tw->off +=tw->len;
+   dev->low_valid_bytes = (tw->off); 
+   PDEBUG("[Deferred work]=> after write : %s\n", dev->low_prio_stream);
+   low_bytes[minor] = dev->low_valid_bytes;
+   mutex_unlock(&(dev->mutex_low));
+   wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
+   kfree(tw);   
  }
  
 //OPEN
@@ -148,98 +113,103 @@ static int dev_release(struct inode *inode, struct file *file) {
    return 0;
 }
 
-
 //WRITE
 static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
 
   int minor = get_minor(filp);
   int ret;
+  int timeout;
   device *dev;
   dev = devices + minor;
   session_data_t *session = filp->private_data;
-  if (session->op==0) { //non blocking operation 
+  ////////////////////////////////////////////////////////////
+  //save to temporary buffer before write to the real stream 
+  char * tmp_buff = kzalloc(sizeof(char)*len,GFP_KERNEL);
+  memset(tmp_buff,0,len);
+  ret = copy_from_user(tmp_buff, buff, len);
+  
+  //gestire il fallimento della copy from user
+  if(ret>0) { //partial copy
+
+  }
+  PINFO("[write]=>request to write %s\n",tmp_buff);
+  //////////////////////////////////////////////////////////
+  //OPERATION  
    if (session->prio == 0) { //high priority flow 
+     if (session->op==0) { //non blocking operation 
       if(!mutex_trylock(&dev->mutex_hi)) {
-         PERR("[Non-Blocking write high prio]=> PID: %d; NAME: %s - RESOURCE BUSY\n", current->pid, current->comm);
-         return -EAGAIN;
-      } else {
-          goto write_hi;
-      }
-   } else {  //low priority flow
-         goto write_low;
-        } 
-  } else { //blocking operation
-      if (session->prio == 0) { //high priority stream 
-           __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-        ret= wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies);
-        if (!ret) {
+         PERR("[Non-Blocking write]=> PID: %d; NAME: %s - RESOURCE BUSY\n", current->pid, current->comm);
+         return 0;
+      } 
+     }  else { //blocking operation
+        __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
+        if (!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
            PINFO("%s - command timed out - \n", __func__);
            __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           return -ETIMEDOUT;
+           return 0;
         } else {
            __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-          goto write_hi;
         }
-         if(!mutex_is_locked(&(dev->mutex_hi))) {
-          wake_up(&(dev->hi_queue));//wake up the waiting thread on the high prio stream
-        }
-      } else { //low priority stream
-        goto write_low;   //deferred work
       }
-  }
+    PINFO("[write/hi_prio_stream]=>stream before write %s\n",dev->hi_prio_stream);
+    sync_write(dev->hi_valid_bytes,minor,len,&tmp_buff);
+    PINFO("[write/hi_prio_stream]=>stream after write %s\n",dev->hi_prio_stream);
+    }
+  else { //low priority stream
+        call_deferred_work(minor,&tmp_buff,len,dev->low_valid_bytes,&filp);
+      }
+return len-ret;
+}
 
-  write_hi: //write to the high level stream
-        *off = dev->hi_valid_bytes; //set the offset at the end of stream of high prio
-       if(*off >= OBJECT_MAX_SIZE) {//offset too large  //limit of device...
-     	      mutex_unlock(&(dev->mutex_hi));
-            wake_up(&(dev->hi_queue));//wake up the waiting thread on the high prio stream
-            PERR("No space left on device - Offset : %ld\n", *off);
-	          return -ENOSPC;//no space left on device
-           }
-        if(*off > dev->hi_valid_bytes) {//offset bwyond the current stream size
-  	        mutex_unlock(&(dev->mutex_hi));
-            wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
-            PERR("Out of stream resources : OFF %ld, HIGH VALID BYTES %d\n",*off, dev->hi_valid_bytes);
- 	          return -ENOSR;
-          }  
-           PINFO("somebody called a high-prio write on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
-           PDEBUG("before write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
-           dev->hi_prio_stream = krealloc(dev->hi_prio_stream,(dev->hi_valid_bytes+len),GFP_KERNEL);
-           memset(dev->hi_prio_stream + dev->hi_valid_bytes ,0,len);
-           ret = copy_from_user(&(dev->hi_prio_stream[*off]),buff,len);
-           if(ret>0) {
-             dev->hi_prio_stream = krealloc(dev->hi_prio_stream,dev->hi_valid_bytes-ret,GFP_KERNEL); //if copy from user return>0 - n bytes not readed
-           }
-           *off += (len - ret);
-           dev->hi_valid_bytes = *off;           
-           PDEBUG("after write HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
-           high_bytes[minor] = dev->hi_valid_bytes;
-           mutex_unlock(&(dev->mutex_hi)); 
-           wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
-           return len-ret;
-       
-        return 0;
 
-  write_low: //write to the low level stream
-       *off = dev->low_valid_bytes; //set the offset at the end of stream of low prio
-       deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_ATOMIC); //create the deferred_work struct for the deferred work
-       bool result;
-       data->bff=kzalloc(sizeof(char)*len,GFP_ATOMIC);
-       ret = copy_from_user(data->bff, buff, len);
-       if (ret>0) {
-         data->bff=krealloc(data->bff, data->bff-ret,GFP_ATOMIC);
-       }
-       data->off=*off;
-       data->filp=filp;
-       data->len=len-ret;
+void  call_deferred_work(int minor, char ** buff, int len, int off, struct file **filp) {
+       device *dev;
+       dev = devices + minor;
+       //allocate new deferred_work item
+       deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_KERNEL); //create the deferred_work struct for the deferred work
+       data->bff=*buff;
+       data->off=off;
+       data->filp=*filp;
+       data->len=len;
+       //init work 
        INIT_WORK(&data->w, deferred_work);  
-       result = queue_work(dev->wq, &data->w); //enqueue the deferred work
- 	  	 if (result == false)  {
-			  PERR("%s:  failed to queue_work\n",__func__);
-        return -1; 
-       } 
-        return 0;
-  return 0;
+       queue_work(dev->wq, &data->w); //enqueue the deferred work
+}
+
+
+void sync_write(int off,int minor, int len, char ** buff) {
+   device *dev;
+   dev = devices + minor;
+   //allocate new memory
+   dev->hi_prio_stream = krealloc(dev->hi_prio_stream,(off+len),GFP_KERNEL);
+   //clear new memory
+   memset(dev->hi_prio_stream+off ,0,len);
+   //concatenate the buff to the stream
+   strncat(dev->hi_prio_stream,*buff ,len);
+   mutex_unlock(&(dev->mutex_hi)); 
+   //update len 
+   off=+len;
+   dev->hi_valid_bytes=off;
+   wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
+}
+
+void sync_read(int off, int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
+
+        if(len > off) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
+              len=len-(len-off);
+        }
+         //copy first len bytes to tmp buff
+         memmove(*tmp_buff, *stream,len); 
+         //clear after reading 
+         memmove(*stream, *stream + len,*valid-len); //shift
+         memset(*stream+ *valid - len,0,len); //clear
+         *stream = krealloc(*stream,*valid - len,GFP_KERNEL);
+         //resettig parameters 
+         off = *valid;
+         off -= len;
+         *valid = off;
+         mutex_unlock(mtx); 
+         wake_up(wq);
 }
 
 //READ
@@ -248,112 +218,61 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   int ret;
   device *dev;
   dev = devices + minor;
-  int del_bytes;
   session_data_t *session = filp->private_data;
-
-   if (session->op==0) { //non blocking operation 
+  char * tmp_buff = kzalloc(sizeof(char)*len,GFP_ATOMIC);
+  memset(tmp_buff,0,len);
+  if (session->op==0) { //non blocking operation 
      if(session->prio==0 ) {  //high priority stream 
            if(!mutex_trylock(&dev->mutex_hi)) {  //try ONCE to get the lock, not blocking
-              PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-              return -EAGAIN;// return to the caller   
-      } else {
-          goto read_hi;
-      }
+              PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
+              return 0;// return to the caller   
+            } else {
+          sync_read(off,len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
+             }
      } else {
          if(!mutex_trylock(&dev->mutex_low)) { //try ONCE to get the lock, not blocking
-          PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-          return -EAGAIN;// return to the caller   
+          PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
+          return 0;// return to the caller   
       } else {
-          goto read_low;
+         sync_read(off,len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
       }
      }       
   } else { //blocking operation 
       if (session->prio == 0) { //high priority stream  
         __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST); 
-        ret = wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies);
-        if (!ret) { //TIMEOUT!!
+        if (!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) { //TIMEOUT!!
            PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           return -ETIMEDOUT;
+           return 0;
         }
         else {
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-          goto read_hi;
-        }
-        if(!mutex_is_locked(&(dev->mutex_hi))) { //if nobody call wake up..
-           wake_up(&(dev->hi_queue)); //Wake up the waiting thread on the high prio stream
+          PINFO("[read/hi_prio_stream]=>stream before read %s\n",dev->hi_prio_stream);
+          sync_read(off,len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
+          PINFO("[read/hi_prio_stream]=>stream after read %s\n",dev->hi_prio_stream);
         }
       }
       else { //low priority stream
          __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
-        ret=wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies);
-        if (!ret) { //waiting until the condition if true OR timeout expired 
+        if (!wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies)) { //waiting until the condition if true OR timeout expired 
           __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
             PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
-            return -ETIMEDOUT;
+            return 0;
         } else {
          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
-         goto read_low;
-        }
-        if(!mutex_is_locked(&(dev->mutex_low))) { //if nobody call wake up..
-           wake_up(&(dev->low_queue)); //Wake up the waiting thread on the high prio stream
+         PINFO("[read/low_prio_stream]=> stream before read %s\n",dev->low_prio_stream);
+         sync_read(off,len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
+         PINFO("[read/low_prio_stream]=> stream after read %s\n",dev->low_prio_stream);
         }
        }
       }
-  read_hi : //read the high level stream
-        *off = dev->hi_valid_bytes; 
-        if(dev->hi_valid_bytes==0) {
-          PERR("EMPTY DEVICE\n");
-          return -1;
-        }
-        if(len > dev->hi_valid_bytes) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
-              len=len-(len-dev->hi_valid_bytes);
-        }
-         PINFO("somebody called a high-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
-         PDEBUG("before read  HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
-         ret = copy_to_user(buff,&(dev->hi_prio_stream[0]),len);
-         del_bytes = len-ret;
-         memmove(dev->hi_prio_stream, (dev->hi_prio_stream) + (del_bytes),(dev->hi_valid_bytes) - (del_bytes));
-         memset(dev->hi_prio_stream + dev->hi_valid_bytes - del_bytes,0,del_bytes);
-         if(del_bytes != 0) {
-         dev->hi_prio_stream = krealloc(dev->hi_prio_stream,dev->hi_valid_bytes - del_bytes,GFP_ATOMIC);
-         *off = dev->hi_valid_bytes;
-         *off -= del_bytes;
-         dev->hi_valid_bytes = *off;
-         high_bytes[minor] = dev->hi_valid_bytes;
-         PDEBUG("after read HIGH LEVEL STREAM : %s \n", dev->hi_prio_stream);
-         mutex_unlock(&(dev->mutex_hi)); 
-         wake_up(&(dev->hi_queue));
-        }
-        return del_bytes;
+//finally, copy to user
+ret = copy_to_user(buff,tmp_buff,len);
 
-  read_low:  //read the low level stream
-        *off = dev->low_valid_bytes;
-        if(dev->low_valid_bytes==0) {
-          PERR("EMPTY DEVICE\n");
-          return -1;
-        }
-       if(len > dev->low_valid_bytes) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
-              len=len - (len -dev->low_valid_bytes);
-        } 
-         PINFO("somebody called a low-prio read on dev with [major,minor] number [%d,%d]\n",get_major(filp),get_minor(filp));
-         PDEBUG("before read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
-         ret = copy_to_user(buff,&(dev->low_prio_stream[0]),len);
-         del_bytes = len-ret;
-         memmove(dev->low_prio_stream, (dev->low_prio_stream) + (del_bytes),(dev->low_valid_bytes) - (del_bytes));
-         memset(dev->low_prio_stream + dev->low_valid_bytes - del_bytes,0,del_bytes);
-         if (del_bytes != 0 ) {
-         dev->low_prio_stream = krealloc(dev->low_prio_stream,dev->low_valid_bytes - del_bytes,GFP_ATOMIC);
-         *off = dev->low_valid_bytes;
-         *off -= del_bytes;
-         dev->low_valid_bytes = *off;
-         low_bytes[minor] = dev->low_valid_bytes;
-         PDEBUG("after read LOW LEVEL STREAM : %s \n", dev->low_prio_stream);
-         mutex_unlock(&(dev->mutex_low)); 
-         wake_up(&(dev->low_queue));
-         } 
-   return del_bytes;
+return len-ret;
 }
+
+
 
 //IOCTL
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg) {
@@ -442,13 +361,15 @@ int i;
     char str[15];
     sprintf( str, "%s%d", "mfdev_wq_", i );
     devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);  //allocate workqueue for devices[i]
-
+  }
+  
 	Major = __register_chrdev(0, 0, 128, DEVICE_NAME, &fops);
 	//actually allowed minors are directly controlled within this driver
+  
 	if (Major < 0) {
 	  printk("registering device failed\n");
 	  return Major;
-	} }
+	} 
 
 	PINFO("new device registered, it is assigned major number %d\n", Major);
 	return 0;
