@@ -7,15 +7,6 @@ Description		:		LINUX MULTI_FLOW DEVICE DRIVER
 ===============================================================================
 */
 
-/*
-cose da fare : 
-- la write non deve ritornare sempre 0
-- la deferred work avviene sempre 
-- levare le ripetizioni del codice 
-- copy_to_user nella write non deve avvenire in modo sincronizzante 
-- wake_up selettiva e non globale 
-*/
-
 #define EXPORT_SYMTAB
 #include "multiflow-driver.h"
 
