@@ -33,7 +33,7 @@ static ssize_t dev_read(struct file *, char *, size_t , loff_t *);
 static void deferred_work(struct work_struct *);
 
 void call_deferred_work(int, char **, int, int, struct file **);
-void sync_read(int , int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *);
+void sync_read(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *);
 void sync_write(int ,int , int , char ** ) ;
 //DEVICE DRIVER TABLE - OPERATIONS
 static struct file_operations fops = {
@@ -193,21 +193,20 @@ void sync_write(int off,int minor, int len, char ** buff) {
    wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
 }
 
-void sync_read(int off, int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
+void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
 
-        if(len > off) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
-              len=len-(len-off);
+        if(len > *valid) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
+              len=len-(len-*valid);
         }
          //copy first len bytes to tmp buff
-         memmove(*tmp_buff, *stream,len); 
+         memmove(*tmp_buff, *stream,len);
+         PINFO("[sync_read] : %s \n", *tmp_buff) ;
          //clear after reading 
          memmove(*stream, *stream + len,*valid-len); //shift
          memset(*stream+ *valid - len,0,len); //clear
-         *stream = krealloc(*stream,*valid - len,GFP_KERNEL);
+         *stream = krealloc(*stream,*valid - len,GFP_ATOMIC);
          //resettig parameters 
-         off = *valid;
-         off -= len;
-         *valid = off;
+         *valid -= len;
          mutex_unlock(mtx); 
          wake_up(wq);
 }
@@ -220,21 +219,22 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   dev = devices + minor;
   session_data_t *session = filp->private_data;
   char * tmp_buff = kzalloc(sizeof(char)*len,GFP_ATOMIC);
-  memset(tmp_buff,0,len);
+  memset(tmp_buff,0,len); //clear temporary buffer
+
   if (session->op==0) { //non blocking operation 
      if(session->prio==0 ) {  //high priority stream 
            if(!mutex_trylock(&dev->mutex_hi)) {  //try ONCE to get the lock, not blocking
               PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
               return 0;// return to the caller   
             } else {
-          sync_read(off,len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
+          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
              }
      } else {
          if(!mutex_trylock(&dev->mutex_low)) { //try ONCE to get the lock, not blocking
           PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
           return 0;// return to the caller   
       } else {
-         sync_read(off,len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
+         sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
       }
      }       
   } else { //blocking operation 
@@ -248,7 +248,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         else {
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
           PINFO("[read/hi_prio_stream]=>stream before read %s\n",dev->hi_prio_stream);
-          sync_read(off,len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
+          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
           PINFO("[read/hi_prio_stream]=>stream after read %s\n",dev->hi_prio_stream);
         }
       }
@@ -261,13 +261,14 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         } else {
          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
          PINFO("[read/low_prio_stream]=> stream before read %s\n",dev->low_prio_stream);
-         sync_read(off,len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
+         sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
          PINFO("[read/low_prio_stream]=> stream after read %s\n",dev->low_prio_stream);
         }
        }
       }
 //finally, copy to user
 ret = copy_to_user(buff,tmp_buff,len);
+kfree(tmp_buff);
 
 return len-ret;
 }
