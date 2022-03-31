@@ -47,14 +47,14 @@ static void deferred_work(struct work_struct *work) {
    minor = get_minor(tw->filp);
    dev = devices + minor;   
    mutex_lock(&dev->mutex_low);
-   PDEBUG("[Deferred work]=> :before write : %s\n", dev->low_prio_stream);
+   PDEBUG("[Deferred work]=>before write : %s\n", dev->low_prio_stream);
    (tw->off)  = dev->low_valid_bytes;
    dev->low_prio_stream = krealloc(dev->low_prio_stream,(dev->low_valid_bytes + tw->len),GFP_ATOMIC);
    memset(dev->low_prio_stream + dev->low_valid_bytes ,0,tw->len);
    strncat(&(dev->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
    tw->off +=tw->len;
    dev->low_valid_bytes = (tw->off); 
-   PDEBUG("[Deferred work]=> after write : %s\n", dev->low_prio_stream);
+   PDEBUG("[Deferred work]=>after write : %s\n", dev->low_prio_stream);
    low_bytes[minor] = dev->low_valid_bytes;
    mutex_unlock(&(dev->mutex_low));
    wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
