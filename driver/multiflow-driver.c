@@ -39,8 +39,8 @@ static void deferred_work(struct work_struct *);
 
 //functional methods
 void call_deferred_work(int, char **, int, int, struct file **);
-void sync_read(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *);
-void sync_write(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *) ;
+void sync_read(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *, int*);
+void sync_write(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *, int *) ;
 
 
 /**
@@ -62,9 +62,11 @@ static void deferred_work(struct work_struct *work) {
    PDEBUG("[Deferred work]=>before write : %s\n", dev->low_prio_stream);
    (tw->off)  = dev->low_valid_bytes;
 
-   sync_write((tw->len),&(dev->low_prio_stream),&(tw->bff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
+   sync_write((tw->len),&(dev->low_prio_stream),&(tw->bff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes),&low_bytes[minor]);
   
    PDEBUG("[Deferred work]=>after write : %s\n", dev->low_prio_stream);
+   
+
    kfree(tw);   
  }
 
@@ -96,14 +98,16 @@ void  call_deferred_work(int minor, char ** buff, int len, int off, struct file 
 /**
  * @brief This is the function that writes to one of the two streams of the device. 
  * 
- * @param len     number of bytes to writes
- * @param stream  stream's device to write to 
- * @param buff    nuffer to write to the stream
- * @param mtx     synchronizer
- * @param wq      pointer to wait_queue_head
- * @param valid   pointer to dev -> valid_param (high/low)
+ * @param len         number of bytes to writes
+ * @param stream      stream's device to write to 
+ * @param buff        nuffer to write to the stream
+ * @param mtx         synchronizer
+ * @param wq          pointer to wait_queue_head
+ * @param valid       pointer to dev -> valid_param (high/low)
+ * @param param_bytes pointer to the module's param about the valid bytes of the stream
+ * 
  */
-void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
+void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid, int *param_bytes) {
    
    //allocate new memory
    *stream = krealloc(*stream,(*valid+len),GFP_ATOMIC);
@@ -111,9 +115,11 @@ void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait
    memset(*stream+*valid ,0,len);
    //concatenate the buff to the stream
    strncat(*stream,*buff ,len);
-   mutex_unlock(mtx); 
-   //update len 
+   //update param 
    *valid+=len;
+   *param_bytes=*valid;
+   
+   mutex_unlock(mtx); 
    wake_up(wq);
 }
 /**
@@ -121,14 +127,15 @@ void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait
             (1) fetching the bytes requested by the user's request read
             (2) removing of data collected by the user from one of the two streams in FIFO's mode.
  * 
- * @param len      number of bytes to fetch
- * @param stream   stream to read
- * @param tmp_buff stream to pass to the user with copy_to_user
- * @param mtx      synchronizer
- * @param wq       pointer to the wait_queue_head_t (high/low)
- * @param valid    pointer to dev -> valid_param (high/low)
+ * @param len         number of bytes to fetch
+ * @param stream      stream to read
+ * @param tmp_buff    stream to pass to the user with copy_to_user
+ * @param mtx         synchronizer
+ * @param wq          pointer to the wait_queue_head_t (high/low)
+ * @param valid       pointer to dev -> valid_param (high/low)
+ * @param param_bytes pointer to the module's param about the valid bytes of the stream
  **/
-void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
+void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid, int *param_bytes) {
 
         if(len > *valid) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
               len=len-(len-*valid);
@@ -141,6 +148,7 @@ void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, w
          *stream = krealloc(*stream,*valid - len,GFP_ATOMIC);
          //resettig parameters 
          *valid -= len;
+         *param_bytes = *valid;
          mutex_unlock(mtx); 
          wake_up(wq);
 }
@@ -258,7 +266,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
         }
       }
     PINFO("[write/hi_prio_stream]=>stream before write %s\n",dev->hi_prio_stream);
-    sync_write(len,&(dev->hi_prio_stream), &(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
+    sync_write(len,&(dev->hi_prio_stream), &(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&high_bytes[minor]);
     PINFO("[write/hi_prio_stream]=>stream after write %s\n",dev->hi_prio_stream);
     }
   else { //low priority stream
@@ -299,14 +307,14 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
               PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
               return 0;// return to the caller   
             } else {
-          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
+          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&(high_bytes[minor]));
              }
      } else {
          if(!mutex_trylock(&dev->mutex_low)) { //try ONCE to get the lock, not blocking
           PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
           return 0;// return to the caller   
       } else {
-         sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
+         sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes),&(low_bytes[minor]));
       }
      }       
   } else { //blocking operation 
@@ -320,7 +328,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         else {
           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
           PINFO("[read/hi_prio_stream]=>stream before read %s\n",dev->hi_prio_stream);
-          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
+          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&(high_bytes[minor]));
           PINFO("[read/hi_prio_stream]=>stream after read %s\n",dev->hi_prio_stream);
         }
       }
@@ -333,7 +341,7 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
         } else {
          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
          PINFO("[read/low_prio_stream]=> stream before read %s\n",dev->low_prio_stream);
-         sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
+         sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes),&(low_bytes[minor]));
          PINFO("[read/low_prio_stream]=> stream after read %s\n",dev->low_prio_stream);
         }
        }
