@@ -1,10 +1,10 @@
 /*
-===============================================================================
+=====================================================================================================
 Driver Name		:		multiflow-driver
 Author			:		MARTINA SALVATI
 License			:		GPL
 Description		:		LINUX MULTI_FLOW DEVICE DRIVER 
-===============================================================================
+=====================================================================================================
 */
 
 #define EXPORT_SYMTAB
@@ -21,7 +21,10 @@ static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static long dev_ioctl(struct file *, unsigned int , unsigned long );
 static ssize_t dev_read(struct file *, char *, size_t , loff_t *);
 
-//DEVICE DRIVER TABLE 
+/**
+ * @brief  Devive's driver table
+ * 
+ */
 static struct file_operations fops = {
   .owner = THIS_MODULE,
   .write = dev_write,
@@ -143,9 +146,9 @@ void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, w
 }
 
 /*
-===============================================================================
-                           DRIVER OPERATIONS
-===============================================================================
+=====================================================================================================
+                                      DRIVER OPERATIONS
+=====================================================================================================
 */
  
 /**
@@ -230,13 +233,13 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   minor = get_minor(filp);
   dev = devices + minor;
   session = filp->private_data;
-  ////////////////////////////////////////////////////////////
+  
   //save to temporary buffer before write to the real stream 
   tmp_buff = kzalloc(sizeof(char)*len,GFP_KERNEL);
   memset(tmp_buff,0,len);
   ret = copy_from_user(tmp_buff, buff, len);
   PINFO("[write]=>request to write %s\n",tmp_buff);
-  //////////////////////////////////////////////////////////
+  
   //OPERATION  
    if (session->prio == 0) { //high priority flow 
      if (session->op==0) { //non blocking operation 
@@ -276,6 +279,7 @@ return len-ret;
  * 
  * @return ssize_t  number of readed bytes
  */
+
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
   int minor;
   int ret;
@@ -349,7 +353,7 @@ return len-ret;
  * @param filp  pointer to struct file 
  * @param command   
  *              The possible commands to call : 
- *              /////////////////////////////////////////////////////////////////////////////////////
+ *              =====================================================================================================
  *              IOCTL_RESET 	      Allows to set the default setting parameters of the device file.
  *              IOCTL_HIGH_PRIO   	Allows to set the workflow to high priority.
  *              IOCTL_LOW_PRIO 	    Allows to set the workflow to low priority.
@@ -359,7 +363,7 @@ return len-ret;
  *              IOCTL_ENABLE 	      Allows to set the device state to enable.
  *              IOCTL_DISABLE    	  Allows to set the device state to disable.
  *              IOCTL_TIMER_TEST    Only for test purpose. Set timeout to nsecs.
- *              //////////////////////////////////////////////////////////////////////////////////////
+ *              =====================================================================================================
  * 
  * @param arg unsined long in user space (timeout's var)
  * 
@@ -438,9 +442,9 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
 }
 
 /*
-===============================================================================
-                          MODULE INIT & EXIT 
-===============================================================================
+=====================================================================================================
+                                   MODULE INIT & EXIT 
+=====================================================================================================
 */
 
 /**
