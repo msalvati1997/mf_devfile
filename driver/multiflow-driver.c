@@ -118,11 +118,6 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   tmp_buff = kzalloc(sizeof(char)*len,GFP_KERNEL);
   memset(tmp_buff,0,len);
   ret = copy_from_user(tmp_buff, buff, len);
-  
-  //gestire il fallimento della copy from user
-  if(ret>0) { //partial copy
-
-  }
   PINFO("[write]=>request to write %s\n",tmp_buff);
   //////////////////////////////////////////////////////////
   //OPERATION  
