@@ -28,6 +28,7 @@
 #include <linux/version.h>	/* For LINUX_VERSION_CODE */
 #include <linux/slab.h>
 #include <linux/jiffies.h>
+#include <linux/kern_levels.h>
 
 
 #define DRIVER_NAME "multiflow-driver"

@@ -29,10 +29,6 @@ char buff[4096];
 
 #define IOCTL_TIMER_TEST _IO(TYPE,8)  
 
-#define DEFAULT_PRIO 1 // low prio
-#define DEFAULT_OP 0 // non blocking
-#define DEFAULT_TIMEOUT 5000 // milliseconds
-#define DEFAULT_STATE 0 // default state - ENABLE
 
 static char *rand_string(char *str, size_t size)
 {

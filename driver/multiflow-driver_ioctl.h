@@ -17,7 +17,7 @@
 #define IOCTL_TIMER_TEST _IO(TYPE,8)  
 
 
-#define DEFAULT_PRIO 1 // low prio
+#define DEFAULT_PRIORITY 1 // low prio
 #define DEFAULT_OP 1 //  blocking
 #define DEFAULT_TIMEOUT 2500 // milliseconds
 #define DEFAULT_STATE 0 // default state - ENABLE

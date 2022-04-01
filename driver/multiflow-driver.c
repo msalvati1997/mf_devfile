@@ -25,7 +25,7 @@ static void deferred_work(struct work_struct *);
 
 void call_deferred_work(int, char **, int, int, struct file **);
 void sync_read(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *);
-void sync_write(int ,int , int , char ** ) ;
+void sync_write(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *) ;
 //DEVICE DRIVER TABLE - OPERATIONS
 static struct file_operations fops = {
   .owner = THIS_MODULE,
@@ -40,24 +40,19 @@ static struct file_operations fops = {
 static void deferred_work(struct work_struct *work) {
    int minor;
    device *dev;
-   int ret;
-   PINFO("[Deferred work]=> PID: %d; NAME: %s\n", current->pid, current->comm);
    deferred_work_t *tw;
    tw = container_of(work, deferred_work_t, w);
    minor = get_minor(tw->filp);
    dev = devices + minor;   
    mutex_lock(&dev->mutex_low);
+   PINFO("[Deferred work]=> PID: %d; NAME: %s\n", current->pid, current->comm);
+
    PDEBUG("[Deferred work]=>before write : %s\n", dev->low_prio_stream);
    (tw->off)  = dev->low_valid_bytes;
-   dev->low_prio_stream = krealloc(dev->low_prio_stream,(dev->low_valid_bytes + tw->len),GFP_ATOMIC);
-   memset(dev->low_prio_stream + dev->low_valid_bytes ,0,tw->len);
-   strncat(&(dev->low_prio_stream[(tw->off)]),(tw->bff) ,(tw->len));
-   tw->off +=tw->len;
-   dev->low_valid_bytes = (tw->off); 
+
+   sync_write((tw->len),&(dev->low_prio_stream),&(tw->bff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes));
+  
    PDEBUG("[Deferred work]=>after write : %s\n", dev->low_prio_stream);
-   low_bytes[minor] = dev->low_valid_bytes;
-   mutex_unlock(&(dev->mutex_low));
-   wake_up(&(dev->low_queue)); //wake up the waiting thread on the low prio queue
    kfree(tw);   
  }
  
@@ -76,11 +71,11 @@ static int dev_open(struct inode *inode, struct file *file) {
       if (session == NULL){
          PERR("Error allocating memory\n");
          return -ENOMEM;
-      }
+   }
       //allocate new session with default parameters
       session->TIMEOUT=DEFAULT_TIMEOUT;
       session->op=DEFAULT_OP;
-      session->prio=DEFAULT_PRIO;
+      session->prio=DEFAULT_PRIORITY;
       session->jiffies=msecs_to_jiffies(DEFAULT_TIMEOUT);
       file -> private_data = session; 
       PINFO("DEVICE FILE [MIN %d] OPENED :  NEW SESSION CREATED\n",minor);
@@ -96,8 +91,10 @@ static int dev_open(struct inode *inode, struct file *file) {
 static int dev_release(struct inode *inode, struct file *file) {
 
    int minor;
+   session_data_t *session;
+
    minor = get_minor(file);
-   session_data_t *session = file->private_data;
+   session = file->private_data;
    kfree(session);
 
    PINFO("device file closed\n");
@@ -107,15 +104,18 @@ static int dev_release(struct inode *inode, struct file *file) {
 //WRITE
 static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
 
-  int minor = get_minor(filp);
+  int minor ;
   int ret;
-  int timeout;
   device *dev;
+  session_data_t *session;
+  char * tmp_buff ;
+
+  minor = get_minor(filp);
   dev = devices + minor;
-  session_data_t *session = filp->private_data;
+  session = filp->private_data;
   ////////////////////////////////////////////////////////////
   //save to temporary buffer before write to the real stream 
-  char * tmp_buff = kzalloc(sizeof(char)*len,GFP_KERNEL);
+  tmp_buff = kzalloc(sizeof(char)*len,GFP_KERNEL);
   memset(tmp_buff,0,len);
   ret = copy_from_user(tmp_buff, buff, len);
   
@@ -143,7 +143,7 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
         }
       }
     PINFO("[write/hi_prio_stream]=>stream before write %s\n",dev->hi_prio_stream);
-    sync_write(dev->hi_valid_bytes,minor,len,&tmp_buff);
+    sync_write(len,&(dev->hi_prio_stream), &(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes));
     PINFO("[write/hi_prio_stream]=>stream after write %s\n",dev->hi_prio_stream);
     }
   else { //low priority stream
@@ -155,9 +155,11 @@ return len-ret;
 
 void  call_deferred_work(int minor, char ** buff, int len, int off, struct file **filp) {
        device *dev;
+       deferred_work_t *data;
+
        dev = devices + minor;
        //allocate new deferred_work item
-       deferred_work_t *data = kzalloc(sizeof(deferred_work_t),GFP_KERNEL); //create the deferred_work struct for the deferred work
+       data = kzalloc(sizeof(deferred_work_t),GFP_KERNEL); //create the deferred_work struct for the deferred work
        data->bff=*buff;
        data->off=off;
        data->filp=*filp;
@@ -168,20 +170,18 @@ void  call_deferred_work(int minor, char ** buff, int len, int off, struct file 
 }
 
 
-void sync_write(int off,int minor, int len, char ** buff) {
-   device *dev;
-   dev = devices + minor;
+void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
+   
    //allocate new memory
-   dev->hi_prio_stream = krealloc(dev->hi_prio_stream,(off+len),GFP_KERNEL);
+   *stream = krealloc(*stream,(*valid+len),GFP_ATOMIC);
    //clear new memory
-   memset(dev->hi_prio_stream+off ,0,len);
+   memset(*stream+*valid ,0,len);
    //concatenate the buff to the stream
-   strncat(dev->hi_prio_stream,*buff ,len);
-   mutex_unlock(&(dev->mutex_hi)); 
+   strncat(*stream,*buff ,len);
+   mutex_unlock(mtx); 
    //update len 
-   off=+len;
-   dev->hi_valid_bytes=off;
-   wake_up(&(dev->hi_queue)); //wake up the waiting thread on the high prio stream
+   *valid+=len;
+   wake_up(wq);
 }
 
 void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
@@ -204,12 +204,16 @@ void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, w
 
 //READ
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
-  int minor = get_minor(filp);
+  int minor;
   int ret;
   device *dev;
+  session_data_t *session;
+  char * tmp_buff;
+
+  minor = get_minor(filp);
   dev = devices + minor;
-  session_data_t *session = filp->private_data;
-  char * tmp_buff = kzalloc(sizeof(char)*len,GFP_ATOMIC);
+  session = filp->private_data;
+  tmp_buff = kzalloc(sizeof(char)*len,GFP_ATOMIC);
   memset(tmp_buff,0,len); //clear temporary buffer
 
   if (session->op==0) { //non blocking operation 
@@ -269,64 +273,67 @@ return len-ret;
 //IOCTL
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg) {
 
-  int minor = get_minor(filp);
+  int minor;
+  int major;
   device *dev;
+  session_data_t *session;
+
+  minor= get_minor(filp);
+  major = get_major(filp);
   dev = devices + minor;
-  session_data_t *session = filp->private_data;
+  session = filp->private_data;
+
   switch (command) {
 
     case IOCTL_RESET :
-      session->prio=DEFAULT_PRIO;
+      session->prio=DEFAULT_PRIORITY;
       session->op=DEFAULT_OP;
       session->TIMEOUT=DEFAULT_TIMEOUT;
       session->jiffies=((DEFAULT_TIMEOUT*HZ)/1000);
-      PINFO("CALLED IOCTL_RESET ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
-       break;
+      PINFO("CALLED IOCTL_RESET ON[MAJ-%d,MIN-%d]\n ",major, minor);
+      break;
 		case IOCTL_HIGH_PRIO:
-      PINFO("CALLED IOCTL_HIGH_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_HIGH_PRIO ON[MAJ-%d,MIN-%d] \n ",major, minor);
     	session->prio = 0;
 			break;
 		case IOCTL_LOW_PRIO:
-      PINFO("CALLED IOCTL_LOW_PRIO ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_LOW_PRIO ON[MAJ-%d,MIN-%d] \n",major, minor);
     	session->prio = 1;
 			break;
     case IOCTL_BLOCKING :
-      PINFO("CALLED IOCTL_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_BLOCKING ON[MAJ-%d,MIN-%d]  \n",major, minor);
       session->op = 1;
 			break;
     case IOCTL_NO_BLOCKING:
-      PINFO("CALLED IOCTL_NO_BLOCKING ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_NO_BLOCKING ON[MAJ-%d,MIN-%d]  \n",major, minor);
      	session->op = 0;
 			break;
     case IOCTL_SETTIMER :
-        //check for timeout input
       if ((int) arg > MAX_TIMEOUT) {
            session->TIMEOUT= MAX_TIMEOUT; 
            session->jiffies=msecs_to_jiffies(MAX_TIMEOUT);
-           PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
         }
       if ((int) arg <= 0) {  
             session->TIMEOUT= DEFAULT_TIMEOUT; //milliseconds
             session->jiffies=msecs_to_jiffies(DEFAULT_TIMEOUT);
-            PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
         }
       else {
         session->TIMEOUT=(int)arg; //milliseconds
         session->jiffies=msecs_to_jiffies(arg);
-        PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
       }
+      PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %lu [HZ] \n", major, minor, session->jiffies);
       break;
     case IOCTL_ENABLE:
      	devices_state[minor]=0;
-      PINFO("CALLED IOCTL_ENABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_ENABLE ON[MAJ-%d,MIN-%d] \n ",major, minor);
 			break;  
     case IOCTL_DISABLE:
      	devices_state[minor]=1;
-      PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d]  ",get_major(filp), get_minor(filp));
+      PINFO("CALLED IOCTL_DISABLE ON[MAJ-%d,MIN-%d] \n ",major, minor);
 			break;    
     case IOCTL_TIMER_TEST: //ONLY FOR TEST PURPOSE!!!!! ..
         session->jiffies= nsecs_to_jiffies(1);
-        PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %d [HZ] ", get_major(filp), get_minor(filp), session->jiffies);
+        PINFO("CALLED IOCTL_SETTIMER ON[MAJ-%d,MIN-%d] : TIMEOUT SET %lu [HZ]\n ", major, minor, session->jiffies);
         break;
 		default:
       PERR("UNKOWN IOCTL COMMAND\n");
@@ -339,6 +346,7 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
 //INIT
 static int __init multiflowdriver_init(void) {
 int i;
+char str[15];
 	//initialize the drive internal state
 	for(i=0;i<MINORS;i++){
 		devices[i].hi_valid_bytes = 0;
@@ -350,7 +358,7 @@ int i;
     init_waitqueue_head(&(devices[i].hi_queue)); //init the waitqueue
     init_waitqueue_head(&(devices[i].low_queue));
     ///initialize workqueue
-    char str[15];
+    memset(str,0,15);
     sprintf( str, "%s%d", "mfdev_wq_", i );
     devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);  //allocate workqueue for devices[i]
   }
@@ -363,7 +371,7 @@ int i;
 	  return Major;
 	} 
 
-	PINFO("new device registered, it is assigned major number %d\n", Major);
+	PINFO("new device registered, it is assigned major number %u\n", Major);
 	return 0;
 
 }
@@ -379,7 +387,7 @@ static void __exit multiflowdriver_exit(void) {
     kfree(devices[i].hi_prio_stream);
 	}  
 	unregister_chrdev(Major, DEVICE_NAME);
-	PINFO("%s: new device unregistered, it was assigned major number %d\n", Major);
+	PINFO("new device unregistered, it was assigned major number %u\n", Major);
 	return;
 
 }
