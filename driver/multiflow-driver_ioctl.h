@@ -1,6 +1,19 @@
 
 #define TYPE 'h'
 
+/*
+Macro's for IOTCL's commands: 
+
+IOCTL_RESET 	    Allows to set the default setting parameters of the device file.
+IOCTL_HIGH_PRIO 	Allows to set the workflow to high priority.
+IOCTL_LOW_PRIO 	    Allows to set the workflow to low priority.
+IOCTL_BLOCKING 	    Allows to set the working mode operation to non blocking.
+IOCTL_NO_BLOCKING 	Allows to set the working mode operation to blocking.
+IOCTL_SETTIMER    	Allows to set the timer for blocking operation.
+IOCTL_ENABLE 	    Allows to set the device state to enable.
+IOCTL_DISABLE    	Allows to set the device state to disable.
+*/
+
 #define IOCTL_RESET	_IO(TYPE, 0)
 
 #define IOCTL_HIGH_PRIO _IO(TYPE,1)    

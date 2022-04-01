@@ -20,13 +20,8 @@ static int dev_release(struct inode *, struct file *);
 static ssize_t dev_write(struct file *, const char *, size_t, loff_t *);
 static long dev_ioctl(struct file *, unsigned int , unsigned long );
 static ssize_t dev_read(struct file *, char *, size_t , loff_t *);
-//deferred work 
-static void deferred_work(struct work_struct *);
 
-void call_deferred_work(int, char **, int, int, struct file **);
-void sync_read(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *);
-void sync_write(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *) ;
-//DEVICE DRIVER TABLE - OPERATIONS
+//DEVICE DRIVER TABLE 
 static struct file_operations fops = {
   .owner = THIS_MODULE,
   .write = dev_write,
@@ -36,7 +31,21 @@ static struct file_operations fops = {
   .unlocked_ioctl = dev_ioctl
 };
 
-//DEFERRED WORK FUNCTION
+//deferred work 
+static void deferred_work(struct work_struct *);
+
+//functional methods
+void call_deferred_work(int, char **, int, int, struct file **);
+void sync_read(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *);
+void sync_write(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *) ;
+
+
+/**
+ * @brief This is the delayed work function. Write to the low priority stream.
+ *        The function never fails.
+ * 
+ * @param work  work contained in __deferred_work_item 's struct
+ */
 static void deferred_work(struct work_struct *work) {
    int minor;
    device *dev;
@@ -55,8 +64,99 @@ static void deferred_work(struct work_struct *work) {
    PDEBUG("[Deferred work]=>after write : %s\n", dev->low_prio_stream);
    kfree(tw);   
  }
+
+/**
+ * @brief This is the function that performs the setup of the structure to be sent to the delayed work function.
+ * 
+ * @param minor minor of device
+ * @param buff  buffer to write
+ * @param len   number of bytes to write
+ * @param off   offset 
+ * @param filp  pointer to Struct file
+ */
+void  call_deferred_work(int minor, char ** buff, int len, int off, struct file **filp) {
+       device *dev;
+       deferred_work_t *data;
+
+       dev = devices + minor;
+       //allocate new deferred_work item
+       data = kzalloc(sizeof(deferred_work_t),GFP_KERNEL); //create the deferred_work struct for the deferred work
+       data->bff=*buff;
+       data->off=off;
+       data->filp=*filp;
+       data->len=len;
+       //init work 
+       INIT_WORK(&data->w, deferred_work);  
+       queue_work(dev->wq, &data->w); //enqueue the deferred work
+}
+
+/**
+ * @brief This is the function that writes to one of the two streams of the device. 
+ * 
+ * @param len     number of bytes to writes
+ * @param stream  stream's device to write to 
+ * @param buff    nuffer to write to the stream
+ * @param mtx     synchronizer
+ * @param wq      pointer to wait_queue_head
+ * @param valid   pointer to dev -> valid_param (high/low)
+ */
+void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
+   
+   //allocate new memory
+   *stream = krealloc(*stream,(*valid+len),GFP_ATOMIC);
+   //clear new memory
+   memset(*stream+*valid ,0,len);
+   //concatenate the buff to the stream
+   strncat(*stream,*buff ,len);
+   mutex_unlock(mtx); 
+   //update len 
+   *valid+=len;
+   wake_up(wq);
+}
+/**
+ * @brief This is a function that does two things:
+            (1) fetching the bytes requested by the user's request read
+            (2) removing of data collected by the user from one of the two streams in FIFO's mode.
+ * 
+ * @param len      number of bytes to fetch
+ * @param stream   stream to read
+ * @param tmp_buff stream to pass to the user with copy_to_user
+ * @param mtx      synchronizer
+ * @param wq       pointer to the wait_queue_head_t (high/low)
+ * @param valid    pointer to dev -> valid_param (high/low)
+ **/
+void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
+
+        if(len > *valid) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
+              len=len-(len-*valid);
+        }
+         //copy first len bytes to tmp buff
+         memmove(*tmp_buff, *stream,len);
+         //clear after reading 
+         memmove(*stream, *stream + len,*valid-len); //shift
+         memset(*stream+ *valid - len,0,len); //clear
+         *stream = krealloc(*stream,*valid - len,GFP_ATOMIC);
+         //resettig parameters 
+         *valid -= len;
+         mutex_unlock(mtx); 
+         wake_up(wq);
+}
+
+/*
+===============================================================================
+                           DRIVER OPERATIONS
+===============================================================================
+*/
  
-//OPEN
+/**
+ * @brief  The device opening operation allocates a private session structure. 
+ *         The allocation of the structure is allowed only if the device_state of the object is set to ENABLE, 
+ *         otherwise (DISABLE) it is not possible to create new sessions.
+ * 
+ * @param inode    pointer to struct inode 
+ * @param file     pointer to struct file
+ * @return int     return 0 or errno is set to a correct value
+ */
 static int dev_open(struct inode *inode, struct file *file) {
 
    int minor;
@@ -87,7 +187,13 @@ static int dev_open(struct inode *inode, struct file *file) {
    }
 }
 
-//RELEASE
+/**
+ * @brief  This operation is used to close a specific device and to deallocate the session's private data.
+ * 
+ * @param inode  pointer to struct inode
+ * @param file   pointer to struct file
+ * @return int   return 0 on success
+ */
 static int dev_release(struct inode *inode, struct file *file) {
 
    int minor;
@@ -101,7 +207,18 @@ static int dev_release(struct inode *inode, struct file *file) {
    return 0;
 }
 
-//WRITE
+/**
+ * @brief  This is the driver write operation. The write operation of n bytes involves the allocation of n bytes of memory. 
+ *         The write operation has a different behavior for each session's setting parameters : priority (high/low), 
+ *         operations' mode (blocking/non blockign).
+ * 
+ * @param filp     pointer to struct file 
+ * @param buff     userspace's buffer that contains the request's bytes to write to the device's stream
+ * @param len      number of bytes to write to the device's stream
+ * @param off      offset 
+ * 
+ * @return ssize_t number of written bytes
+ */
 static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t *off) {
 
   int minor ;
@@ -148,55 +265,17 @@ return len-ret;
 }
 
 
-void  call_deferred_work(int minor, char ** buff, int len, int off, struct file **filp) {
-       device *dev;
-       deferred_work_t *data;
-
-       dev = devices + minor;
-       //allocate new deferred_work item
-       data = kzalloc(sizeof(deferred_work_t),GFP_KERNEL); //create the deferred_work struct for the deferred work
-       data->bff=*buff;
-       data->off=off;
-       data->filp=*filp;
-       data->len=len;
-       //init work 
-       INIT_WORK(&data->w, deferred_work);  
-       queue_work(dev->wq, &data->w); //enqueue the deferred work
-}
-
-
-void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
-   
-   //allocate new memory
-   *stream = krealloc(*stream,(*valid+len),GFP_ATOMIC);
-   //clear new memory
-   memset(*stream+*valid ,0,len);
-   //concatenate the buff to the stream
-   strncat(*stream,*buff ,len);
-   mutex_unlock(mtx); 
-   //update len 
-   *valid+=len;
-   wake_up(wq);
-}
-
-void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, wait_queue_head_t *wq, int *valid) {
-
-        if(len > *valid) { //IF REQUEST BYTES TO READ ARE MAJOR TO THE VALID BYTES.. READ ONLY THE VALID BYTES..
-              len=len-(len-*valid);
-        }
-         //copy first len bytes to tmp buff
-         memmove(*tmp_buff, *stream,len);
-         //clear after reading 
-         memmove(*stream, *stream + len,*valid-len); //shift
-         memset(*stream+ *valid - len,0,len); //clear
-         *stream = krealloc(*stream,*valid - len,GFP_ATOMIC);
-         //resettig parameters 
-         *valid -= len;
-         mutex_unlock(mtx); 
-         wake_up(wq);
-}
-
-//READ
+/**
+ * @brief  This is the driver read operation. Readings are performed in FIFO mode from left to right. 
+ *         When a read is performed then the readed bytes are removed from the stream.
+ * 
+ * @param filp      pointer to struct file 
+ * @param buff      userspace's buffer that will contains the  bytes requested from user to read
+ * @param len       number of bytes to read 
+ * @param off       offset
+ * 
+ * @return ssize_t  number of readed bytes
+ */
 static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) {
   int minor;
   int ret;
@@ -264,7 +343,29 @@ return len-ret;
 
 
 
-//IOCTL
+/**
+ * @brief   This function handles all "interface"-type I/O control requests. 
+ * 
+ * @param filp  pointer to struct file 
+ * @param command   
+ *              The possible commands to call : 
+ *              /////////////////////////////////////////////////////////////////////////////////////
+ *              IOCTL_RESET 	      Allows to set the default setting parameters of the device file.
+ *              IOCTL_HIGH_PRIO   	Allows to set the workflow to high priority.
+ *              IOCTL_LOW_PRIO 	    Allows to set the workflow to low priority.
+ *              IOCTL_BLOCKING 	    Allows to set the working mode operation to non blocking.
+ *              IOCTL_NO_BLOCKING 	Allows to set the working mode operation to blocking.
+ *              IOCTL_SETTIMER    	Allows to set the timer for blocking operation.
+ *              IOCTL_ENABLE 	      Allows to set the device state to enable.
+ *              IOCTL_DISABLE    	  Allows to set the device state to disable.
+ *              IOCTL_TIMER_TEST    Only for test purpose. Set timeout to nsecs.
+ *              //////////////////////////////////////////////////////////////////////////////////////
+ * 
+ * @param arg unsined long in user space (timeout's var)
+ * 
+ * @return long  The return value is the return from the syscall if
+ *	             positive or a negative errno code on error.
+ */
 static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg) {
 
   int minor;
@@ -336,8 +437,17 @@ static long dev_ioctl(struct file *filp, unsigned int command, unsigned long arg
   return 0;
 }
 
+/*
+===============================================================================
+                          MODULE INIT & EXIT 
+===============================================================================
+*/
 
-//INIT
+/**
+ * @brief  Initialize the module with all needed structures.
+ * 
+ * @return 0 or a negative errno code on error. 
+ */
 static int __init multiflowdriver_init(void) {
 int i;
 char str[15];
@@ -370,7 +480,10 @@ char str[15];
 
 }
 
-//EXIT
+/**
+ * @brief Module Cleanup. All driver data structures are deallocated.
+ * 
+ */
 static void __exit multiflowdriver_exit(void) {
 
 	int i;
@@ -395,8 +508,10 @@ module_param_array(low_bytes,int,NULL,S_IRUGO); //#valid bytes are present in ev
 module_param_array(high_waiting, int,NULL,S_IRUGO);   //#threads waiting on high priority stream for every device
 module_param_array(low_waiting, int,NULL,S_IRUGO); //#threads are waiting on low priority stream for every device
 
-MODULE_PARM_DESC(devices_state, "Array of devices states (0 = enabled - 1 = disabled)");
-MODULE_PARM_DESC(high_bytes, "Array reporting the number of current valid bytes in the high priority stream of every device.");
-MODULE_PARM_DESC(low_bytes, "Array reporting the number of current valid bytes in the low priority stream of every device.");
-MODULE_PARM_DESC(high_waiting, "Array describing the number of threads waiting on the high priority stream of every device.");
-MODULE_PARM_DESC(low_waiting, "Array describing the number of threads waiting on the low priority stream of every device.");
+MODULE_PARM_DESC(devices_state, "This param set the state of the device file. If set to enable, new session can be created. If set to disable, new session can't be created.");
+MODULE_PARM_DESC(low_waiting, "This param indicates the thread currently waiting on the waitqueue reserved to the process working to the low stream.");
+MODULE_PARM_DESC(high_waiting, "This param indicates the thread currently waiting on the waitqueue reserved to the process working to the hi stream.");
+MODULE_PARM_DESC(high_bytes, "This param indicates the number of bytes present on the high prio stream");
+MODULE_PARM_DESC(low_bytes, "This param indicates the number of bytes present on the low prio stream");
+
+

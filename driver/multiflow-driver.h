@@ -47,7 +47,12 @@ static int Major;            /* Major number assigned to broadcast device driver
 #define get_minor(session)	MINOR(session->f_dentry->d_inode->i_rdev)
 #endif
 
-//deferred work struct
+/**
+ * @brief  For each workqueue it's necessary to implement a structure that could contain the data necessary 
+ *         for the write operations of the low priority stream. 
+ *         This structure reserved for each item of the worqueue.
+ * 
+ */
 struct __deferred_work_item {
         struct file *filp;
         char * bff;
@@ -57,7 +62,11 @@ struct __deferred_work_item {
 };
 typedef struct __deferred_work_item deferred_work_t;
 
-//session data struct 
+/**
+ * @brief The structure reserved for each session opened by a program.
+ * 
+ * 
+ */
 struct __session_data {
   int prio;    //prio : 0 high prio - 1 low prio 
   int op;      //type of operation :  0 non blocking operation - 1 blocking operation
@@ -66,7 +75,10 @@ struct __session_data {
 };
 typedef struct __session_data session_data_t;
 
-//device struct
+/**
+ * @brief The structure reserved for each device.   
+ * 
+ */
 typedef struct _device{
   struct mutex mutex_hi;
   struct mutex mutex_low;
@@ -84,7 +96,10 @@ typedef struct _device{
 device devices[MINORS];
 
 
-//param array
+/**
+ * @brief Param's array used for module's paramet
+ * 
+ */
 int devices_state[MINORS];  //initially : 0 (ALL ENABLED)
 int high_bytes[MINORS];
 int low_bytes[MINORS];
