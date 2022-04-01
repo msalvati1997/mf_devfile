@@ -191,7 +191,6 @@ void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, w
         }
          //copy first len bytes to tmp buff
          memmove(*tmp_buff, *stream,len);
-         PINFO("[sync_read] : %s \n", *tmp_buff) ;
          //clear after reading 
          memmove(*stream, *stream + len,*valid-len); //shift
          memset(*stream+ *valid - len,0,len); //clear
