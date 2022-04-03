@@ -182,7 +182,7 @@ int dev_lock(session_data_t *session, struct mutex * mtx, wait_queue_head_t *wq,
       } else { //blocking
            __atomic_fetch_add(param_wait, 1, __ATOMIC_SEQ_CST); 
         if (!wait_event_timeout(*wq, mutex_trylock(mtx), session->jiffies)) { //TIMEOUT!!
-           PINFO("[Blocking op]=> PID: %d; NAME: %s - TIMEOUT EXPIRED\n", current ->pid, current->comm); //TIMEOUT EXPIRED
+           PERR("[Blocking op]=> PID: %d; NAME: %s - TIMEOUT EXPIRED\n", current ->pid, current->comm); //TIMEOUT EXPIRED
           __atomic_fetch_sub(param_wait, 1, __ATOMIC_SEQ_CST);
            return 0;
         }

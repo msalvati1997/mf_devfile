@@ -21,20 +21,20 @@ void * the_thread_timeout_expired_high(void* path){
     char * buff = malloc(sizeof(char)*8);
 	char* data = rand_string_alloc(sizeof(char)*7);
 	buff = strcat(data,"_");
-    printf("Writing on high priority stream...%s \n\n",buff);
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-
+	for (i=0;i<10;i++) {
+	     buff = strcat(rand_string_alloc(sizeof(char)*7),"_");
+	     write(fd,buff,strlen(buff));
+		 printf("written : %s\n", buff);
+		 memset(buff,0,strlen(buff));
+		usleep(1);
+	}
     char * buff2 = malloc(sizeof(char)*8);
-
+	for (i=0;i<10;i++) {
+	memset(buff2,0,strlen(buff2));
 	read(fd,buff2,8);
-	printf("Read from high priority stream.. %s\n\n", buff2);
+	printf("Readed : %s\n",buff2);
+	usleep(1);
+	}
 	return NULL;
 }
 
@@ -58,28 +58,26 @@ void * the_thread_timeout_expired_low(void* path){
 	ioctl(fd,IOCTL_BLOCKING); // no blocking operations 
 	ioctl(fd,IOCTL_TIMER_TEST); 
     char * buff = malloc(sizeof(char)*8);
-	char* data = rand_string_alloc(sizeof(char)*7);
-	buff = strcat(data,"_");
-    printf("Writing on low priority stream...%s\n\n",buff);
+	
+	for(i=0;i<10;i++) {
+	
+	memset(buff,0,strlen(buff));
+	buff = strcat(rand_string_alloc(sizeof(char)*7),"_");
 	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-	write(fd,buff,strlen(buff));
-    char * buff2 = malloc(sizeof(char)*8);
+	printf("written: %s\n", buff);
+	usleep(1);
+
+	}
+
+	char * buff2 = malloc(sizeof(char)*8);
+	for(i=0;i<10;i++) {
+	memset(buff2,0,strlen(buff2)); 
 	read(fd,buff2,8);
+	printf("Readed : %s\n",buff2);
+	usleep(1);
+	}
 	
 
-	printf("Read from low priority stream.. %s\n\n", buff2);
 	return NULL;
 }
 int main(int argc, char** argv)
