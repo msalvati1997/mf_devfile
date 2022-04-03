@@ -152,6 +152,46 @@ void sync_read(int len, char ** stream , char ** tmp_buff, struct mutex * mtx, w
          mutex_unlock(mtx); 
          wake_up(wq);
 }
+/**
+ * @brief  This function is about acquiring the lock.
+ *         The acquisition of the lock depends on the type of operation. 
+ *         If non-blocking, try to take the lock once and then return to the caller. 
+ *         If blocking, the wait_event_timeout API is used. 
+ *         In the blocking case the thread is blocked as long as :
+ *              (1) the condition is true (the lock is taken) 
+ *              (2) the timeout is expired.
+ * 
+ * @param session           pointer to the session struct
+ * @param mtx               pointer to the mutex struct
+ * @param wq                pointer to the waitqueue struct
+ * @param param_wait        pointer to the param of waiting thread 
+ * @return int              0 fail, 1 success
+ */
+int dev_lock(session_data_t *session, struct mutex * mtx, wait_queue_head_t *wq, int *param_wait) {
+
+     if(session->op==0) //non blocking 
+     {
+        if(!mutex_trylock(mtx)) {  //try ONCE to get the lock, not blocking
+              PERR("[Non-Blocking op]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
+              return 0;// return to the caller   
+            } 
+          else {
+            return 1;
+          }
+      } else { //blocking
+           __atomic_fetch_add(param_wait, 1, __ATOMIC_SEQ_CST); 
+        if (!wait_event_timeout(*wq, mutex_trylock(mtx), session->jiffies)) { //TIMEOUT!!
+           PINFO("[Blocking op]=> PID: %d; NAME: %s - TIMEOUT EXPIRED\n", current ->pid, current->comm); //TIMEOUT EXPIRED
+          __atomic_fetch_sub(param_wait, 1, __ATOMIC_SEQ_CST);
+           return 0;
+        }
+        else {
+          __atomic_fetch_sub(param_wait, 1, __ATOMIC_SEQ_CST);
+          return 1; 
+        }
+      } 
+ 
+}
 
 /*
 =====================================================================================================
@@ -250,24 +290,13 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   
   //OPERATION  
    if (session->prio == 0) { //high priority flow 
-     if (session->op==0) { //non blocking operation 
-      if(!mutex_trylock(&dev->mutex_hi)) {
-         PERR("[Non-Blocking write]=> PID: %d; NAME: %s - RESOURCE BUSY\n", current->pid, current->comm);
-         return 0;
-      } 
-     }  else { //blocking operation
-        __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-        if (!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) {
-           PINFO("%s - command timed out - \n", __func__);
-           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           return 0;
-        } else {
-           __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-        }
-      }
-    PINFO("[write/hi_prio_stream]=>stream before write %s\n",dev->hi_prio_stream);
-    sync_write(len,&(dev->hi_prio_stream), &(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&high_bytes[minor]);
-    PINFO("[write/hi_prio_stream]=>stream after write %s\n",dev->hi_prio_stream);
+            if(dev_lock(session,&dev->mutex_hi,&dev->hi_queue,&high_waiting[minor])==1) { //acquiring the lock, depends on the type of operation in session data
+               PINFO("[write/hi_prio_stream]=>stream before write %s\n",dev->hi_prio_stream);
+               sync_write(len,&(dev->hi_prio_stream), &(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&high_bytes[minor]); 
+               PINFO("[write/hi_prio_stream]=>stream after write %s\n",dev->hi_prio_stream);    
+            } else {
+              return 0;
+            }
     }
   else { //low priority stream
         call_deferred_work(minor,&tmp_buff,len,dev->low_valid_bytes,&filp);
@@ -301,51 +330,24 @@ static ssize_t dev_read(struct file *filp, char *buff, size_t len, loff_t *off) 
   tmp_buff = kzalloc(sizeof(char)*len,GFP_ATOMIC);
   memset(tmp_buff,0,len); //clear temporary buffer
 
-  if (session->op==0) { //non blocking operation 
-     if(session->prio==0 ) {  //high priority stream 
-           if(!mutex_trylock(&dev->mutex_hi)) {  //try ONCE to get the lock, not blocking
-              PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-              return 0;// return to the caller   
-            } else {
-          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&(high_bytes[minor]));
-             }
-     } else {
-         if(!mutex_trylock(&dev->mutex_low)) { //try ONCE to get the lock, not blocking
-          PERR("[Non-Blocking read]=> PID: %d; NAME: %s - CAN'T DO THE OPERATION\n", current->pid, current->comm);
-          return 0;// return to the caller   
-      } else {
-         sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes),&(low_bytes[minor]));
-      }
-     }       
-  } else { //blocking operation 
-      if (session->prio == 0) { //high priority stream  
-        __atomic_fetch_add(&high_waiting[minor], 1, __ATOMIC_SEQ_CST); 
-        if (!wait_event_timeout(dev->hi_queue, mutex_trylock(&(dev->mutex_hi)), session->jiffies)) { //TIMEOUT!!
-           PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
-          __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-           return 0;
-        }
-        else {
-          __atomic_fetch_sub(&high_waiting[minor], 1, __ATOMIC_SEQ_CST);
-          PINFO("[read/hi_prio_stream]=>stream before read %s\n",dev->hi_prio_stream);
-          sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&(high_bytes[minor]));
-          PINFO("[read/hi_prio_stream]=>stream after read %s\n",dev->hi_prio_stream);
-        }
-      }
-      else { //low priority stream
-         __atomic_fetch_add(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
-        if (!wait_event_timeout(dev->low_queue, mutex_trylock(&(dev->mutex_low)), session->jiffies)) { //waiting until the condition if true OR timeout expired 
-          __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST);
-            PINFO("%s - command timed out - \n", __func__); //TIMEOUT EXPIRED
-            return 0;
-        } else {
-         __atomic_fetch_sub(&low_waiting[minor], 1, __ATOMIC_SEQ_CST); 
+  if (session->prio==0)   { //high priority stream
+    if(dev_lock(session,&dev->mutex_hi,&dev->hi_queue,&high_waiting[minor])==1) {
+        PINFO("[read/hi_prio_stream]=>stream before read %s\n",dev->hi_prio_stream);
+        sync_read(len,&(dev->hi_prio_stream),&(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&(high_bytes[minor]));
+        PINFO("[read/hi_prio_stream]=>stream after read %s\n",dev->hi_prio_stream);
+    } else {
+      return 0;
+    }
+  } else { //low priority stream
+    if(dev_lock(session,&dev->mutex_low,&dev->low_queue,&low_waiting[minor])==1) {
          PINFO("[read/low_prio_stream]=> stream before read %s\n",dev->low_prio_stream);
          sync_read(len,&(dev->low_prio_stream),&(tmp_buff),&(dev->mutex_low),&(dev->low_queue),&(dev->low_valid_bytes),&(low_bytes[minor]));
          PINFO("[read/low_prio_stream]=> stream after read %s\n",dev->low_prio_stream);
-        }
-       }
-      }
+    } else {
+       return 0;
+    }
+  }
+
 //finally, copy to user
 ret = copy_to_user(buff,tmp_buff,len);
 kfree(tmp_buff);
@@ -465,21 +467,23 @@ int i;
 char str[15];
 	//initialize the drive internal state
 	for(i=0;i<MINORS;i++){
-		devices[i].hi_valid_bytes = 0;
-		devices[i].low_valid_bytes = 0;
-		devices[i].hi_prio_stream = NULL;  //dynamic memory
-		devices[i].low_prio_stream = NULL;  //dynamic memory 
-   	mutex_init(&(devices[i].mutex_low));
-    mutex_init(&(devices[i].mutex_hi));
-    init_waitqueue_head(&(devices[i].hi_queue)); //init the waitqueue
-    init_waitqueue_head(&(devices[i].low_queue));
-    ///initialize workqueue
-    memset(str,0,15);
-    sprintf( str, "%s%d", "mfdev_wq_", i );
-    devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);  //allocate workqueue for devices[i]
+
+		  devices[i].hi_valid_bytes = 0;
+	  	devices[i].low_valid_bytes = 0;
+	  	devices[i].hi_prio_stream = NULL;  //dynamic memory
+	  	devices[i].low_prio_stream = NULL;  //dynamic memory 
+     	mutex_init(&(devices[i].mutex_low));
+      mutex_init(&(devices[i].mutex_hi));
+      init_waitqueue_head(&(devices[i].hi_queue)); //init the waitqueue
+      init_waitqueue_head(&(devices[i].low_queue));
+       ///initialize workqueue
+      memset(str,0,15);
+      sprintf( str, "%s%d", "mfdev_wq_", i );
+      devices[i].wq  = alloc_workqueue(str, WQ_HIGHPRI | WQ_UNBOUND , 0);  //allocate workqueue for devices[i]
+      
   }
   
-	Major = __register_chrdev(0, 0, 128, DEVICE_NAME, &fops);
+  Major = __register_chrdev(0, 0, 128, DEVICE_NAME, &fops);
 	//actually allowed minors are directly controlled within this driver
   
 	if (Major < 0) {
@@ -487,7 +491,7 @@ char str[15];
 	  return Major;
 	} 
 
-	PINFO("new device registered, it is assigned major number %u\n", Major);
+	PINFO("New device registered, it is assigned major number %u\n", Major);
 	return 0;
 
 }
@@ -499,15 +503,21 @@ char str[15];
 static void __exit multiflowdriver_exit(void) {
 
 	int i;
+
 	for(i=0;i<MINORS;i++){
-    flush_workqueue(devices[i].wq);
-    destroy_workqueue(devices[i].wq);
-    kfree(devices[i].low_prio_stream);
-    kfree(devices[i].hi_prio_stream);
+
+     flush_workqueue(devices[i].wq);
+     destroy_workqueue(devices[i].wq);
+     kfree(devices[i].low_prio_stream);
+     kfree(devices[i].hi_prio_stream);
+
 	}  
-	unregister_chrdev(Major, DEVICE_NAME);
-	PINFO("new device unregistered, it was assigned major number %u\n", Major);
-	return;
+  
+  unregister_chrdev(Major, DEVICE_NAME);
+	
+  PINFO("new device unregistered, it was assigned major number %u\n", Major);
+	
+  return;
 
 }
 
