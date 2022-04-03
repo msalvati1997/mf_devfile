@@ -40,7 +40,8 @@ static void deferred_work(struct work_struct *);
 //functional methods
 void call_deferred_work(int, char **, int, int, struct file **);
 void sync_read(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *, int*);
-void sync_write(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *, int *) ;
+void sync_write(int , char **  , char ** , struct mutex * , wait_queue_head_t *, int *, int *);
+int dev_lock(session_data_t *, struct mutex *, wait_queue_head_t *, int *);
 
 
 /**
