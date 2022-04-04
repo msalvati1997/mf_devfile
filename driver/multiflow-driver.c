@@ -122,6 +122,8 @@ void sync_write(int len, char ** stream , char ** buff, struct mutex * mtx, wait
    
    mutex_unlock(mtx); 
    wake_up(wq);
+
+   kfree(*buff);
 }
 /**
  * @brief This is a function that does two things:
@@ -277,31 +279,33 @@ static ssize_t dev_write(struct file *filp, const char *buff, size_t len, loff_t
   int ret;
   device *dev;
   session_data_t *session;
-  char * tmp_buff ;
+  char * buff_tmp ;
 
   minor = get_minor(filp);
   dev = devices + minor;
   session = filp->private_data;
   
   //save to temporary buffer before write to the real stream 
-  tmp_buff = kzalloc(sizeof(char)*len,GFP_KERNEL);
-  memset(tmp_buff,0,len);
-  ret = copy_from_user(tmp_buff, buff, len);
-  PINFO("[write]=>request to write %s\n",tmp_buff);
+  buff_tmp = kzalloc(sizeof(char)*len,GFP_KERNEL);
+  memset(buff_tmp,0,len);
+  ret = copy_from_user(buff_tmp, buff, len);
+  PINFO("[write]=>request to write %s\n",buff_tmp);
   
   //OPERATION  
    if (session->prio == 0) { //high priority flow 
             if(dev_lock(session,&dev->mutex_hi,&dev->hi_queue,&high_waiting[minor])==1) { //acquiring the lock, depends on the type of operation in session data
                PINFO("[write/hi_prio_stream]=>stream before write %s\n",dev->hi_prio_stream);
-               sync_write(len,&(dev->hi_prio_stream), &(tmp_buff),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&high_bytes[minor]); 
+               sync_write(len,&(dev->hi_prio_stream), &(buff_tmp),&(dev->mutex_hi),&(dev->hi_queue),&(dev->hi_valid_bytes),&high_bytes[minor]); 
                PINFO("[write/hi_prio_stream]=>stream after write %s\n",dev->hi_prio_stream);    
             } else {
               return 0;
             }
     }
   else { //low priority stream
-        call_deferred_work(minor,&tmp_buff,len,dev->low_valid_bytes,&filp);
+        call_deferred_work(minor,&buff_tmp,len,dev->low_valid_bytes,&filp);
       }
+
+
 return len-ret;
 }
 
